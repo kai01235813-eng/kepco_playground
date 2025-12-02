@@ -25,6 +25,19 @@ app.options('*', (req, res) => {
 
 app.use(express.json());
 
+// Healthcheck 엔드포인트 (Railway 배포 확인용)
+app.get('/', (req, res) => {
+  res.status(200).json({ 
+    status: 'ok', 
+    message: 'KEPCO Playground API Server',
+    timestamp: new Date().toISOString()
+  });
+});
+
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'healthy' });
+});
+
 const db = new sqlite3.Database(DB_PATH, (err) => {
   if (err) {
     // eslint-disable-next-line no-console
