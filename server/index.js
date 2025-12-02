@@ -772,26 +772,57 @@ app.get('/api/keptube/videos', async (req, res) => {
     
     const xmlData = await response.text();
     
-    // XML 파싱
-    const parser = new xml2js.Parser();
+    // XML 파싱 (네임스페이스 처리를 위해 옵션 설정)
+    const parser = new xml2js.Parser({
+      explicitArray: true,
+      mergeAttrs: false,
+      explicitNamespaces: true
+    });
     const result = await parser.parseStringPromise(xmlData);
     
     // 동영상 정보 추출
     const entries = result.feed?.entry || [];
     const videos = entries.slice(0, 8).map((entry) => {
-      // 동영상 ID 추출 (yt:videoId 또는 entry.id에서)
-      const videoId = entry['yt:videoId']?.[0] || entry.id?.[0]?.split(':').pop() || '';
-      const title = entry.title?.[0] || '';
-      const published = entry.published?.[0] || '';
-      const author = entry.author?.[0]?.name?.[0] || '에너지인사이트';
+      // 동영상 ID 추출 - 여러 방법 시도
+      let videoId = '';
+      
+      // 방법 1: yt:videoId 네임스페이스 확인
+      if (entry['yt:videoId']) {
+        videoId = Array.isArray(entry['yt:videoId']) ? entry['yt:videoId'][0] : entry['yt:videoId'];
+      }
+      // 방법 2: entry.id에서 추출 (형식: yt:video:VIDEO_ID)
+      else if (entry.id && entry.id[0]) {
+        const idString = entry.id[0];
+        if (typeof idString === 'string') {
+          const match = idString.match(/yt:video:([\w-]+)/);
+          videoId = match ? match[1] : idString.split(':').pop();
+        } else if (idString._) {
+          videoId = idString._.split(':').pop();
+        }
+      }
+      // 방법 3: link에서 추출
+      else if (entry.link && entry.link[0] && entry.link[0].$.href) {
+        const href = entry.link[0].$.href;
+        const match = href.match(/[?&]v=([\w-]+)/);
+        videoId = match ? match[1] : '';
+      }
+      
+      const title = entry.title && entry.title[0] ? entry.title[0] : '';
+      const published = entry.published && entry.published[0] ? entry.published[0] : '';
+      const author = (entry.author && entry.author[0] && entry.author[0].name && entry.author[0].name[0]) 
+        ? entry.author[0].name[0] 
+        : '에너지인사이트';
       
       return {
-        videoId,
-        title,
-        published,
-        author
+        videoId: typeof videoId === 'string' ? videoId : String(videoId),
+        title: typeof title === 'string' ? title : String(title),
+        published: typeof published === 'string' ? published : String(published),
+        author: typeof author === 'string' ? author : String(author)
       };
-    }).filter(video => video.videoId); // videoId가 있는 것만 필터링
+    }).filter(video => video.videoId && video.videoId.length > 0); // videoId가 유효한 것만 필터링
+    
+    // eslint-disable-next-line no-console
+    console.log(`[KEPTUBE] Loaded ${videos.length} videos`);
     
     return res.json({
       success: true,
