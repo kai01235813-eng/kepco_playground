@@ -7,8 +7,13 @@ const app = express();
 const PORT = process.env.PORT || 4000;
 const DB_PATH = path.join(__dirname, 'data.sqlite');
 
-// 개발 환경에서는 모든 오리진 허용 (Vite dev 서버, 다른 포트에서도 접근 가능)
-app.use(cors());
+// CORS 설정: 모든 오리진 허용 (프로덕션 환경 포함)
+app.use(cors({
+  origin: '*', // 모든 오리진 허용
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: false
+}));
 app.use(express.json());
 
 const db = new sqlite3.Database(DB_PATH, (err) => {

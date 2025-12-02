@@ -32,11 +32,20 @@ const SimpleLogin: React.FC<SimpleLoginProps> = ({ onLogin }) => {
     setError('');
     setLoading(true);
     try {
+      // 디버깅: API URL 확인
+      // eslint-disable-next-line no-console
+      console.log('Login API URL:', `${API_BASE}/auth/login`);
+      
       const res = await fetch(`${API_BASE}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ employeeId, password })
       });
+      
+      // 디버깅: 응답 상태 확인
+      // eslint-disable-next-line no-console
+      console.log('Login response status:', res.status, res.statusText);
+      
       if (res.ok) {
         const data = await res.json();
         localStorage.setItem('user', JSON.stringify({ ...data, coinBalance: data.coinBalance || 0 }));
@@ -47,7 +56,9 @@ const SimpleLogin: React.FC<SimpleLoginProps> = ({ onLogin }) => {
         setTimeout(() => window.location.reload(), 100);
       } else {
         const errorData = await res.json().catch(() => ({}));
-        setError(errorData.error || '로그인에 실패했습니다.');
+        // eslint-disable-next-line no-console
+        console.error('Login error:', errorData);
+        setError(errorData.error || '로그인에 실패했습니다. 서버 연결을 확인해주세요.');
       }
     } catch (e) {
       // eslint-disable-next-line no-console
@@ -67,11 +78,20 @@ const SimpleLogin: React.FC<SimpleLoginProps> = ({ onLogin }) => {
     }
     setLoading(true);
     try {
+      // 디버깅: API URL 확인
+      // eslint-disable-next-line no-console
+      console.log('Signup API URL:', `${API_BASE}/auth/signup`);
+      
       const res = await fetch(`${API_BASE}/auth/signup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ employeeId, password, name })
       });
+      
+      // 디버깅: 응답 상태 확인
+      // eslint-disable-next-line no-console
+      console.log('Signup response status:', res.status, res.statusText);
+      
       if (res.ok) {
         const data = await res.json();
         localStorage.setItem('user', JSON.stringify({ ...data, coinBalance: data.coinBalance || 0 }));
@@ -84,12 +104,14 @@ const SimpleLogin: React.FC<SimpleLoginProps> = ({ onLogin }) => {
         setTimeout(() => window.location.reload(), 100);
       } else {
         const errorData = await res.json().catch(() => ({}));
-        setError(errorData.error || '회원가입에 실패했습니다.');
+        // eslint-disable-next-line no-console
+        console.error('Signup error:', errorData);
+        setError(errorData.error || '회원가입에 실패했습니다. 서버 연결을 확인해주세요.');
       }
     } catch (e) {
       // eslint-disable-next-line no-console
       console.error('Signup error:', e);
-      setError('회원가입 중 오류가 발생했습니다.');
+      setError(`네트워크 오류: ${e instanceof Error ? e.message : '서버에 연결할 수 없습니다. API 주소를 확인해주세요.'}`);
     } finally {
       setLoading(false);
     }

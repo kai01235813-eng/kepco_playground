@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>API 디버깅</title>
+  <style>
+    body {
+      font-family: monospace;
+      padding: 20px;
+      background: #1a1a1a;
+      color: #fff;
+    }
+    .result {
+      background: #2a2a2a;
+      padding: 10px;
+      margin: 10px 0;
+      border-radius: 4px;
+    }
+    button {
+      background: #38bdf8;
+      color: #000;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 4px;
+      cursor: pointer;
+      margin: 5px;
+    }
+    button:hover {
+      background: #22d3ee;
+    }
+  </style>
+</head>
+<body>
+  <h1>🔍 API 디버깅 도구</h1>
+  
+  <div>
+    <button onclick="checkApiUrl()">1. API URL 확인</button>
+    <button onclick="testRailway()">2. Railway 서버 테스트</button>
+    <button onclick="testSignup()">3. 회원가입 테스트</button>
+  </div>
+  
+  <div id="results"></div>
+
+  <script type="module">
+    window.checkApiUrl = () => {
+      const apiBase = import.meta.env?.VITE_API_BASE || 'http://localhost:4000/api';
+      const result = document.getElementById('results');
+      result.innerHTML += `<div class="result">
+        <strong>🔗 API URL:</strong> ${apiBase}<br>
+        <strong>환경 변수:</strong> ${import.meta.env?.VITE_API_BASE ? '✅ 설정됨' : '❌ 미설정 (localhost 사용)'}
+      </div>`;
+      console.log('🔗 API_BASE:', apiBase);
+    };
+
+    window.testRailway = async () => {
+      const apiBase = import.meta.env?.VITE_API_BASE || 'http://localhost:4000/api';
+      const result = document.getElementById('results');
+      
+      try {
+        const response = await fetch(apiBase.replace('/api', ''));
+        result.innerHTML += `<div class="result">
+          <strong>🚂 Railway 서버 테스트:</strong><br>
+          Status: ${response.status}<br>
+          ✅ 서버 연결 성공
+        </div>`;
+      } catch (error) {
+        result.innerHTML += `<div class="result">
+          <strong>🚂 Railway 서버 테스트:</strong><br>
+          ❌ 연결 실패: ${error.message}
+        </div>`;
+        console.error('Railway 연결 실패:', error);
+      }
+    };
+
+    window.testSignup = async () => {
+      const apiBase = import.meta.env?.VITE_API_BASE || 'http://localhost:4000/api';
+      const result = document.getElementById('results');
+      
+      try {
+        const response = await fetch(`${apiBase}/auth/signup`, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            employeeId: 'test' + Date.now(),
+            password: 'test123',
+            name: '테스트'
+          })
+        });
+        
+        const data = await response.json();
+        result.innerHTML += `<div class="result">
+          <strong>📝 회원가입 테스트:</strong><br>
+          Status: ${response.status}<br>
+          Response: ${JSON.stringify(data, null, 2)}
+        </div>`;
+      } catch (error) {
+        result.innerHTML += `<div class="result">
+          <strong>📝 회원가입 테스트:</strong><br>
+          ❌ 에러: ${error.message}
+        </div>`;
+        console.error('회원가입 테스트 실패:', error);
+      }
+    };
+  </script>
+</body>
+</html>
+
