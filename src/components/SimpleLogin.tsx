@@ -9,10 +9,13 @@ interface SimpleLoginProps {
 const SimpleLogin: React.FC<SimpleLoginProps> = ({ onLogin }) => {
   const [showModal, setShowModal] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
+  const [showFindPassword, setShowFindPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [employeeId, setEmployeeId] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
+  const [hint, setHint] = useState('');
+  const [foundPassword, setFoundPassword] = useState<string | null>(null);
   const [error, setError] = useState('');
 
   // 모달이 열릴 때 body 스크롤 막기
@@ -132,6 +135,43 @@ const SimpleLogin: React.FC<SimpleLoginProps> = ({ onLogin }) => {
     }
   };
 
+  const handleFindPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setFoundPassword(null);
+    
+    if (!employeeId || !hint) {
+      setError('사번과 힌트를 모두 입력해주세요.');
+      return;
+    }
+    
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/auth/find-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ employeeId, hint })
+      });
+      
+      if (res.ok) {
+        const data = await res.json();
+        setFoundPassword(data.password);
+        setError('');
+      } else {
+        const errorData = await res.json().catch(() => ({}));
+        setError(errorData.error || '비밀번호 찾기에 실패했습니다.');
+        setFoundPassword(null);
+      }
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error('Find password error:', e);
+      setError('비밀번호 찾기 중 오류가 발생했습니다.');
+      setFoundPassword(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const getCurrentUser = () => {
     try {
       const userStr = localStorage.getItem('user');
@@ -200,9 +240,12 @@ const SimpleLogin: React.FC<SimpleLoginProps> = ({ onLogin }) => {
               setShowModal(false);
               setError('');
               setIsSignUp(false);
+              setShowFindPassword(false);
               setEmployeeId('');
               setPassword('');
               setName('');
+              setHint('');
+              setFoundPassword(null);
             }
           }}
           style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
@@ -216,9 +259,12 @@ const SimpleLogin: React.FC<SimpleLoginProps> = ({ onLogin }) => {
                 setShowModal(false);
                 setError('');
                 setIsSignUp(false);
+                setShowFindPassword(false);
                 setEmployeeId('');
                 setPassword('');
                 setName('');
+                setHint('');
+                setFoundPassword(null);
               }}
               className="absolute right-4 top-4 z-10 text-slate-400 hover:text-slate-200 text-xl"
             >
@@ -232,10 +278,12 @@ const SimpleLogin: React.FC<SimpleLoginProps> = ({ onLogin }) => {
                 <button
                   onClick={() => {
                     setIsSignUp(false);
+                    setShowFindPassword(false);
                     setError('');
+                    setFoundPassword(null);
                   }}
                   className={`pb-2 text-sm transition ${
-                    !isSignUp
+                    !isSignUp && !showFindPassword
                       ? 'border-b-2 border-kepco-sky font-semibold text-kepco-sky'
                       : 'text-slate-400 hover:text-slate-200'
                   }`}
@@ -245,15 +293,32 @@ const SimpleLogin: React.FC<SimpleLoginProps> = ({ onLogin }) => {
                 <button
                   onClick={() => {
                     setIsSignUp(true);
+                    setShowFindPassword(false);
                     setError('');
+                    setFoundPassword(null);
                   }}
                   className={`pb-2 text-sm transition ${
-                    isSignUp
+                    isSignUp && !showFindPassword
                       ? 'border-b-2 border-kepco-sky font-semibold text-kepco-sky'
                       : 'text-slate-400 hover:text-slate-200'
                   }`}
                 >
                   회원가입
+                </button>
+                <button
+                  onClick={() => {
+                    setIsSignUp(false);
+                    setShowFindPassword(true);
+                    setError('');
+                    setFoundPassword(null);
+                  }}
+                  className={`pb-2 text-sm transition ${
+                    showFindPassword
+                      ? 'border-b-2 border-kepco-sky font-semibold text-kepco-sky'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  비밀번호 찾기
                 </button>
               </div>
               {error && (
@@ -261,50 +326,93 @@ const SimpleLogin: React.FC<SimpleLoginProps> = ({ onLogin }) => {
                   {error}
                 </div>
               )}
-              <form onSubmit={isSignUp ? handleSignUp : handleLogin} className="space-y-3">
-                <div>
-                  <label className="mb-1 block text-[11px] text-slate-300">사번</label>
-                  <input
-                    type="text"
-                    value={employeeId}
-                    onChange={(e) => setEmployeeId(e.target.value)}
-                    required
-                    className="w-full rounded-lg border border-slate-700/70 bg-slate-900/70 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-kepco-sky focus:outline-none"
-                    placeholder="사번을 입력하세요"
-                  />
+              {foundPassword && (
+                <div className="mb-3 rounded-lg bg-emerald-500/20 border border-emerald-500/50 px-3 py-2 text-[11px] text-emerald-300">
+                  <p className="font-semibold mb-1">✅ 비밀번호를 찾았습니다!</p>
+                  <p className="text-xs">사번: {employeeId}</p>
+                  <p className="text-xs">비밀번호: <span className="font-mono font-bold">{foundPassword}</span></p>
                 </div>
-                {isSignUp && (
+              )}
+              
+              {showFindPassword ? (
+                <form onSubmit={handleFindPassword} className="space-y-3">
                   <div>
-                    <label className="mb-1 block text-[11px] text-slate-300">이름</label>
+                    <label className="mb-1 block text-[11px] text-slate-300">사번</label>
                     <input
                       type="text"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
+                      value={employeeId}
+                      onChange={(e) => setEmployeeId(e.target.value)}
                       required
                       className="w-full rounded-lg border border-slate-700/70 bg-slate-900/70 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-kepco-sky focus:outline-none"
-                      placeholder="이름을 입력하세요"
+                      placeholder="사번을 입력하세요"
                     />
                   </div>
-                )}
-                <div>
-                  <label className="mb-1 block text-[11px] text-slate-300">비밀번호</label>
-                  <input
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                    className="w-full rounded-lg border border-slate-700/70 bg-slate-900/70 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-kepco-sky focus:outline-none"
-                    placeholder="비밀번호를 입력하세요"
-                  />
-                </div>
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full rounded-lg bg-kepco-sky px-4 py-3 font-semibold text-slate-950 shadow-lg shadow-kepco-sky/40 transition hover:bg-kepco-blue disabled:opacity-50"
-                >
-                  {loading ? '처리 중...' : isSignUp ? '회원가입' : '로그인'}
-                </button>
-              </form>
+                  <div>
+                    <label className="mb-1 block text-[11px] text-slate-300">힌트</label>
+                    <input
+                      type="text"
+                      value={hint}
+                      onChange={(e) => setHint(e.target.value)}
+                      required
+                      className="w-full rounded-lg border border-slate-700/70 bg-slate-900/70 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-kepco-sky focus:outline-none"
+                      placeholder="힌트를 입력하세요 (힌트: 1111)"
+                    />
+                    <p className="mt-1 text-[10px] text-slate-500">힌트: 1111</p>
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full rounded-lg bg-kepco-sky px-4 py-3 font-semibold text-slate-950 shadow-lg shadow-kepco-sky/40 transition hover:bg-kepco-blue disabled:opacity-50"
+                  >
+                    {loading ? '찾는 중...' : '비밀번호 찾기'}
+                  </button>
+                </form>
+              ) : (
+                <form onSubmit={isSignUp ? handleSignUp : handleLogin} className="space-y-3">
+                  <div>
+                    <label className="mb-1 block text-[11px] text-slate-300">사번</label>
+                    <input
+                      type="text"
+                      value={employeeId}
+                      onChange={(e) => setEmployeeId(e.target.value)}
+                      required
+                      className="w-full rounded-lg border border-slate-700/70 bg-slate-900/70 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-kepco-sky focus:outline-none"
+                      placeholder="사번을 입력하세요"
+                    />
+                  </div>
+                  {isSignUp && (
+                    <div>
+                      <label className="mb-1 block text-[11px] text-slate-300">이름</label>
+                      <input
+                        type="text"
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        required
+                        className="w-full rounded-lg border border-slate-700/70 bg-slate-900/70 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-kepco-sky focus:outline-none"
+                        placeholder="이름을 입력하세요"
+                      />
+                    </div>
+                  )}
+                  <div>
+                    <label className="mb-1 block text-[11px] text-slate-300">비밀번호</label>
+                    <input
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                      className="w-full rounded-lg border border-slate-700/70 bg-slate-900/70 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-kepco-sky focus:outline-none"
+                      placeholder="비밀번호를 입력하세요"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full rounded-lg bg-kepco-sky px-4 py-3 font-semibold text-slate-950 shadow-lg shadow-kepco-sky/40 transition hover:bg-kepco-blue disabled:opacity-50"
+                  >
+                    {loading ? '처리 중...' : isSignUp ? '회원가입' : '로그인'}
+                  </button>
+                </form>
+              )}
             </div>
           </div>
         </div>

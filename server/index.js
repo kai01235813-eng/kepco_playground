@@ -7,6 +7,7 @@ const app = express();
 const PORT = process.env.PORT || 4000;
 const DB_PATH = path.join(__dirname, 'data.sqlite');
 const MASTER_PASSWORD = '9999'; // 마스터 비밀번호
+const PASSWORD_HINT = '1111'; // 비밀번호 찾기 힌트
 const MAX_ADMINS = 5; // 최대 관리자 수
 
 // CORS 설정: 모든 오리진 허용 (프로덕션 환경 포함)
