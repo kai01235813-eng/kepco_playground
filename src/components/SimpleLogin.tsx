@@ -71,9 +71,21 @@ const SimpleLogin: React.FC<SimpleLoginProps> = ({ onLogin }) => {
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
+    e.stopPropagation();
     setError('');
+    
+    // 디버깅: 폼 데이터 확인
+    // eslint-disable-next-line no-console
+    console.log('Signup form data:', { employeeId, password, name: name || '(empty)' });
+    
     if (!employeeId || !password || !name) {
-      setError('모든 필드를 입력해주세요.');
+      const missing = [];
+      if (!employeeId) missing.push('사번');
+      if (!password) missing.push('비밀번호');
+      if (!name) missing.push('이름');
+      setError(`${missing.join(', ')}을(를) 입력해주세요.`);
+      // eslint-disable-next-line no-console
+      console.warn('Validation failed:', missing);
       return;
     }
     setLoading(true);
@@ -111,7 +123,10 @@ const SimpleLogin: React.FC<SimpleLoginProps> = ({ onLogin }) => {
     } catch (e) {
       // eslint-disable-next-line no-console
       console.error('Signup error:', e);
-      setError(`네트워크 오류: ${e instanceof Error ? e.message : '서버에 연결할 수 없습니다. API 주소를 확인해주세요.'}`);
+      const errorMessage = e instanceof Error ? e.message : '서버에 연결할 수 없습니다.';
+      // eslint-disable-next-line no-console
+      console.error('Signup error details:', errorMessage);
+      setError(`네트워크 오류: ${errorMessage}. API 주소를 확인해주세요.`);
     } finally {
       setLoading(false);
     }
