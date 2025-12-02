@@ -38,6 +38,119 @@ app.get('/health', (req, res) => {
   res.status(200).json({ status: 'healthy' });
 });
 
+// 관리자용: net_score가 -1인 게시글 강제 삭제
+app.delete('/api/admin/posts/downvoted', (req, res) => {
+  // net_score가 -1인 게시글 찾기
+  db.all(
+    `SELECT p.id
+     FROM posts p
+     LEFT JOIN votes v ON p.id = v.post_id
+     GROUP BY p.id
+     HAVING (COALESCE(SUM(CASE WHEN v.vote_type = 'upvote' THEN 1 ELSE 0 END), 0) - 
+             COALESCE(SUM(CASE WHEN v.vote_type = 'downvote' THEN 1 ELSE 0 END), 0)) = -1
+     ORDER BY p.created_at ASC`,
+    [],
+    (err, rows) => {
+      if (err) {
+        // eslint-disable-next-line no-console
+        console.error('Error finding downvoted posts:', err);
+        return res.status(500).json({ error: 'DB error' });
+      }
+
+      if (rows.length === 0) {
+        return res.json({ message: 'No downvoted posts found', deleted: 0 });
+      }
+
+      const postIds = rows.map((row) => row.id);
+      let deletedCount = 0;
+      let errorOccurred = false;
+
+      db.serialize(() => {
+        // 투표 삭제
+        db.run(
+          'DELETE FROM votes WHERE post_id IN (' + postIds.map(() => '?').join(',') + ')',
+          postIds,
+          (err) => {
+            if (err) {
+              // eslint-disable-next-line no-console
+              console.error('Error deleting votes:', err);
+              errorOccurred = true;
+            }
+          }
+        );
+
+        // 댓글 삭제
+        db.run(
+          'DELETE FROM comments WHERE post_id IN (' + postIds.map(() => '?').join(',') + ')',
+          postIds,
+          (err) => {
+            if (err) {
+              // eslint-disable-next-line no-console
+              console.error('Error deleting comments:', err);
+              errorOccurred = true;
+            }
+          }
+        );
+
+        // HOT 아이디어에서 제거
+        db.run(
+          'DELETE FROM hot_ideas WHERE post_id IN (' + postIds.map(() => '?').join(',') + ')',
+          postIds,
+          (err) => {
+            if (err) {
+              // eslint-disable-next-line no-console
+              console.error('Error deleting from hot_ideas:', err);
+              errorOccurred = true;
+            }
+          }
+        );
+
+        // vote_history에서 제거
+        db.run(
+          'DELETE FROM vote_history WHERE post_id IN (' + postIds.map(() => '?').join(',') + ')',
+          postIds,
+          (err) => {
+            if (err) {
+              // eslint-disable-next-line no-console
+              console.error('Error deleting from vote_history:', err);
+              errorOccurred = true;
+            }
+          }
+        );
+
+        // 게시글 삭제
+        db.run(
+          'DELETE FROM posts WHERE id IN (' + postIds.map(() => '?').join(',') + ')',
+          postIds,
+          function(err) {
+            if (err) {
+              // eslint-disable-next-line no-console
+              console.error('Error deleting posts:', err);
+              return res.status(500).json({ error: 'Failed to delete posts' });
+            }
+
+            deletedCount = this.changes;
+
+            if (errorOccurred) {
+              return res.status(207).json({
+                message: 'Posts deleted with some errors',
+                deleted: deletedCount,
+                postIds
+              });
+            }
+
+            return res.json({
+              message: 'Downvoted posts deleted successfully',
+              deleted: deletedCount,
+              postIds
+            });
+          }
+        );
+      });
+    }
+  );
+});
+
 const db = new sqlite3.Database(DB_PATH, (err) => {
   if (err) {
     // eslint-disable-next-line no-console
