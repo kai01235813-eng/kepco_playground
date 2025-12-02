@@ -5,7 +5,8 @@ interface PostFormProps {
   mode: 'create' | 'edit';
   initialTitle?: string;
   initialContent?: string;
-  onSubmit: (title: string, content: string, password?: string) => void;
+  initialUrl?: string;
+  onSubmit: (title: string, content: string, password?: string, url?: string) => void;
   onCancel?: () => void;
 }
 
@@ -13,11 +14,13 @@ const PostForm: React.FC<PostFormProps> = ({
   mode,
   initialTitle = '',
   initialContent = '',
+  initialUrl = '',
   onSubmit,
   onCancel
 }) => {
   const [title, setTitle] = useState(initialTitle);
   const [content, setContent] = useState(initialContent);
+  const [url, setUrl] = useState(initialUrl);
   const [password, setPassword] = useState('');
 
   const isCreate = mode === 'create';
@@ -26,10 +29,11 @@ const PostForm: React.FC<PostFormProps> = ({
     e.preventDefault();
     if (!title.trim() || !content.trim()) return;
     if (isCreate && !password.trim()) return;
-    onSubmit(title.trim(), content.trim(), isCreate ? password : undefined);
+    onSubmit(title.trim(), content.trim(), isCreate ? password : undefined, url.trim() || undefined);
     if (isCreate) {
       setTitle('');
       setContent('');
+      setUrl('');
       setPassword('');
     }
   };
@@ -53,6 +57,13 @@ const PostForm: React.FC<PostFormProps> = ({
         placeholder="내용을 입력하세요. 링크와 설명을 자유롭게 적어주세요."
         value={content}
         onChange={(e) => setContent(e.target.value)}
+      />
+      <input
+        type="url"
+        className="h-8 w-full rounded-lg border border-slate-700/70 bg-slate-900/70 px-2 text-[11px] text-slate-100 placeholder:text-slate-500 focus:border-kepco-sky focus:outline-none"
+        placeholder="체험 링크 (선택사항, 예: https://example.com)"
+        value={url}
+        onChange={(e) => setUrl(e.target.value)}
       />
       {isCreate && (
         <input

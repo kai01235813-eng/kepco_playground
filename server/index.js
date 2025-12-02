@@ -96,6 +96,11 @@ db.serialize(() => {
     // 컬럼이 이미 존재하면 에러 발생 (무시)
   });
   
+  // 기존 테이블 마이그레이션: url 컬럼 추가
+  db.run(`ALTER TABLE posts ADD COLUMN url TEXT`, () => {
+    // 컬럼이 이미 존재하면 에러 발생 (무시)
+  });
+  
   db.run(
     `CREATE TABLE IF NOT EXISTS hot_ideas (
       id TEXT PRIMARY KEY,
@@ -555,7 +560,7 @@ app.post('/api/playground-apps', (req, res) => {
 
 app.get('/api/posts', (req, res) => {
   db.all(
-    `SELECT p.id, p.title, p.content, p.created_at as createdAt,
+    `SELECT p.id, p.title, p.content, p.url, p.created_at as createdAt,
      COALESCE(SUM(CASE WHEN v.vote_type = 'upvote' THEN 1 ELSE 0 END), 0) as upvotes,
      COALESCE(SUM(CASE WHEN v.vote_type = 'downvote' THEN 1 ELSE 0 END), 0) as downvotes
      FROM posts p
@@ -581,22 +586,22 @@ app.get('/api/posts', (req, res) => {
 });
 
 app.post('/api/posts', (req, res) => {
-  const { title, content, password, authorId } = req.body;
+  const { title, content, password, authorId, url } = req.body;
   if (!title || !content || !password) {
     return res.status(400).json({ error: 'Invalid payload' });
   }
   const id = `post-${Date.now()}-${Math.random().toString(16).slice(2)}`;
   const createdAt = Date.now();
   db.run(
-    'INSERT INTO posts (id, title, content, password, author_id, created_at) VALUES (?, ?, ?, ?, ?, ?)',
-    [id, title, content, password, authorId || null, createdAt],
+    'INSERT INTO posts (id, title, content, password, author_id, url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    [id, title, content, password, authorId || null, url || null, createdAt],
     (err) => {
       if (err) {
         // eslint-disable-next-line no-console
         console.error(err);
         return res.status(500).json({ error: 'DB error' });
       }
-      return res.status(201).json({ id, title, content, createdAt });
+      return res.status(201).json({ id, title, content, url: url || null, createdAt });
     }
   );
 });
@@ -604,7 +609,7 @@ app.post('/api/posts', (req, res) => {
 app.get('/api/posts/:id', (req, res) => {
   const { id } = req.params;
   db.get(
-    `SELECT p.id, p.title, p.content, p.created_at as createdAt,
+    `SELECT p.id, p.title, p.content, p.url, p.created_at as createdAt,
      COALESCE(SUM(CASE WHEN v.vote_type = 'upvote' THEN 1 ELSE 0 END), 0) as upvotes,
      COALESCE(SUM(CASE WHEN v.vote_type = 'downvote' THEN 1 ELSE 0 END), 0) as downvotes
      FROM posts p
@@ -635,7 +640,7 @@ app.get('/api/posts/:id', (req, res) => {
 
 app.put('/api/posts/:id', (req, res) => {
   const { id } = req.params;
-  const { title, content, password } = req.body;
+  const { title, content, password, url } = req.body;
   if (!title || !content || !password) {
     return res.status(400).json({ error: 'Invalid payload' });
   }
@@ -652,15 +657,15 @@ app.put('/api/posts/:id', (req, res) => {
       return res.status(403).json({ error: 'Invalid password' });
     }
     db.run(
-      'UPDATE posts SET title = ?, content = ? WHERE id = ?',
-      [title, content, id],
+      'UPDATE posts SET title = ?, content = ?, url = ? WHERE id = ?',
+      [title, content, url || null, id],
       (updateErr) => {
         if (updateErr) {
           // eslint-disable-next-line no-console
           console.error(updateErr);
           return res.status(500).json({ error: 'DB error' });
         }
-        return res.json({ id, title, content });
+        return res.json({ id, title, content, url: url || null });
       }
     );
   });

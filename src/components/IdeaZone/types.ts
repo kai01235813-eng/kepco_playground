@@ -2,6 +2,7 @@ export interface IdeaPost {
   id: string;
   title: string;
   content: string;
+  url?: string | null;
   createdAt: number;
   upvotes?: number;
   downvotes?: number;

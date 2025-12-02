@@ -453,6 +453,10 @@ const PostDetail: React.FC<PostDetailProps> = ({
                 post.content
               );
               if (!newContent || !newContent.trim()) return;
+              const newUrl = window.prompt(
+                '체험 링크를 입력하세요. (선택사항, 비우려면 확인을 눌러주세요)',
+                post.url || ''
+              );
               try {
                 const res = await fetch(`${API_BASE}/posts/${post.id}`, {
                   method: 'PUT',
@@ -460,7 +464,8 @@ const PostDetail: React.FC<PostDetailProps> = ({
                   body: JSON.stringify({
                     title: newTitle.trim(),
                     content: newContent.trim(),
-                    password: pw
+                    password: pw,
+                    url: newUrl ? newUrl.trim() : null
                   })
                 });
                 if (!res.ok) {
@@ -470,7 +475,8 @@ const PostDetail: React.FC<PostDetailProps> = ({
                 setPost({
                   ...post,
                   title: newTitle.trim(),
-                  content: newContent.trim()
+                  content: newContent.trim(),
+                  url: newUrl ? newUrl.trim() : null
                 });
                 onUpdated();
               } catch (e) {
@@ -490,6 +496,19 @@ const PostDetail: React.FC<PostDetailProps> = ({
           </button>
         </div>
       </div>
+
+      {post.url && (
+        <div className="flex justify-center">
+          <button
+            type="button"
+            onClick={() => window.open(post.url!, '_blank', 'noopener,noreferrer')}
+            className="inline-flex items-center justify-center gap-2 rounded-lg border border-kepco-sky/50 bg-slate-950/40 px-4 py-2 text-xs font-semibold text-kepco-sky transition hover:bg-kepco-sky/20 hover:text-slate-50"
+          >
+            <span>🚀</span>
+            <span>체험하기</span>
+          </button>
+        </div>
+      )}
 
       <div className="rounded-xl border border-slate-800/80 bg-slate-950/70 p-3 text-[11px] text-slate-100">
         <p className="whitespace-pre-wrap">{post.content}</p>

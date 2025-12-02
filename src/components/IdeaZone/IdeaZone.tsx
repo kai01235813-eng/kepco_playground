@@ -36,7 +36,8 @@ const IdeaZone: React.FC = () => {
   const handleCreatePost = async (
     title: string,
     content: string,
-    password?: string
+    password?: string,
+    url?: string
   ) => {
     if (!password) return;
     try {
@@ -55,7 +56,7 @@ const IdeaZone: React.FC = () => {
       const res = await fetch(`${API_BASE}/posts`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, content, password, authorId })
+        body: JSON.stringify({ title, content, password, authorId, url })
       });
       if (!res.ok) {
         alert('아이디어 등록에 실패했습니다.');

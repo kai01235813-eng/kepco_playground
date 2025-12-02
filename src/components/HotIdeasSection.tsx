@@ -6,6 +6,7 @@ import { API_BASE } from '../config/api';
 type Idea = {
   id: string;
   title: string;
+  url?: string | null;
   upvotes: number;
   downvotes: number;
   net_score: number;
@@ -109,13 +110,24 @@ const HotIdeasSection: React.FC = () => {
                   </span>
                 </div>
               </div>
-              <button
-                onClick={() => navigate('/innovation')}
-                className="mt-4 inline-flex items-center justify-center gap-1 rounded-lg bg-kepco-sky px-3 py-1.5 text-[11px] font-semibold text-slate-950 shadow-md shadow-kepco-sky/40 transition group-hover:bg-kepco-blue"
-              >
-                <span>🗳️</span>
-                <span>투표하기</span>
-              </button>
+              <div className="mt-4 flex flex-col gap-2">
+                <button
+                  onClick={() => navigate('/innovation')}
+                  className="inline-flex items-center justify-center gap-1 rounded-lg bg-kepco-sky px-3 py-1.5 text-[11px] font-semibold text-slate-950 shadow-md shadow-kepco-sky/40 transition group-hover:bg-kepco-blue"
+                >
+                  <span>🗳️</span>
+                  <span>투표하기</span>
+                </button>
+                {idea.url && (
+                  <button
+                    onClick={() => window.open(idea.url, '_blank', 'noopener,noreferrer')}
+                    className="inline-flex items-center justify-center gap-1 rounded-lg border border-kepco-sky/50 bg-slate-950/40 px-3 py-1.5 text-[11px] font-semibold text-kepco-sky transition hover:bg-kepco-sky/20 hover:text-slate-50"
+                  >
+                    <span>🚀</span>
+                    <span>체험하기</span>
+                  </button>
+                )}
+              </div>
             </article>
           ))
         )}
