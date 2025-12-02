@@ -397,7 +397,7 @@ db.serialize(() => {
     // 컬럼이 이미 존재하면 에러 발생 (무시)
   });
 
-  // 지식공유 게시판 테이블 생성
+  // 지식공유 게시판 테이블 생성 (파일 여러 개 저장을 위해 JSON 형식으로 변경)
   db.run(
     `CREATE TABLE IF NOT EXISTS knowledge_posts (
       id TEXT PRIMARY KEY,
@@ -405,12 +405,16 @@ db.serialize(() => {
       title TEXT NOT NULL,
       content TEXT NOT NULL,
       employee_id TEXT NOT NULL,
-      file_name TEXT,
-      file_data TEXT,
+      file_names TEXT,
+      file_data_array TEXT,
       created_at INTEGER NOT NULL,
       updated_at INTEGER
     )`
   );
+  
+  // 기존 테이블 마이그레이션: 단일 파일 → 여러 파일 구조로 변경
+  db.run(`ALTER TABLE knowledge_posts ADD COLUMN file_names TEXT`, () => {});
+  db.run(`ALTER TABLE knowledge_posts ADD COLUMN file_data_array TEXT`, () => {});
   
   db.run(
     `CREATE TABLE IF NOT EXISTS hot_ideas (
@@ -1038,7 +1042,7 @@ app.delete('/api/anonymous-posts/:id', (req, res) => {
 // 게시글 목록 조회
 app.get('/api/knowledge-posts', (req, res) => {
   const { category } = req.query;
-  let query = 'SELECT id, category, title, content, employee_id, file_name, created_at, updated_at FROM knowledge_posts';
+  let query = 'SELECT id, category, title, content, employee_id, file_names, file_data_array, created_at, updated_at FROM knowledge_posts';
   const params = [];
   
   if (category) {
@@ -1055,21 +1059,36 @@ app.get('/api/knowledge-posts', (req, res) => {
       return res.status(500).json({ error: 'DB error' });
     }
     
-    // 사번으로 사용자 이름 조회
+    // 사번으로 사용자 이름 조회 및 파일 정보 파싱
     const postsWithNames = rows.map((row) => {
       return new Promise((resolve) => {
         db.get(
           'SELECT name FROM users WHERE employee_id = ?',
           [row.employee_id],
           (nameErr, user) => {
+            // 파일 정보 파싱
+            let fileNames = [];
+            if (row.file_names) {
+              try {
+                fileNames = JSON.parse(row.file_names);
+              } catch {
+                // 이전 형식 호환
+                if (row.file_name) {
+                  fileNames = [row.file_name];
+                }
+              }
+            }
+            
             if (nameErr || !user) {
               resolve({
                 ...row,
+                fileNames,
                 employeeName: row.employee_id // 이름이 없으면 사번만 표시
               });
             } else {
               resolve({
                 ...row,
+                fileNames,
                 employeeName: user.name
               });
             }
@@ -1089,7 +1108,7 @@ app.get('/api/knowledge-posts/:id', (req, res) => {
   const { id } = req.params;
   
   db.get(
-    'SELECT id, category, title, content, employee_id, file_name, created_at, updated_at FROM knowledge_posts WHERE id = ?',
+    'SELECT id, category, title, content, employee_id, file_names, file_data_array, created_at, updated_at FROM knowledge_posts WHERE id = ?',
     [id],
     (err, row) => {
       if (err) {
@@ -1101,6 +1120,19 @@ app.get('/api/knowledge-posts/:id', (req, res) => {
         return res.status(404).json({ error: 'Post not found' });
       }
       
+      // 파일 정보 파싱
+      let fileNames = [];
+      if (row.file_names) {
+        try {
+          fileNames = JSON.parse(row.file_names);
+        } catch {
+          // 이전 형식 호환 (단일 파일)
+          if (row.file_name) {
+            fileNames = [row.file_name];
+          }
+        }
+      }
+      
       // 사용자 이름 조회
       db.get(
         'SELECT name FROM users WHERE employee_id = ?',
@@ -1108,6 +1140,7 @@ app.get('/api/knowledge-posts/:id', (req, res) => {
         (nameErr, user) => {
           return res.json({
             ...row,
+            fileNames,
             employeeName: user ? user.name : row.employee_id
           });
         }
@@ -1117,11 +1150,12 @@ app.get('/api/knowledge-posts/:id', (req, res) => {
 });
 
 // 파일 다운로드
-app.get('/api/knowledge-posts/:id/file', (req, res) => {
-  const { id } = req.params;
+app.get('/api/knowledge-posts/:id/file/:fileIndex', (req, res) => {
+  const { id, fileIndex } = req.params;
+  const index = parseInt(fileIndex, 10);
   
   db.get(
-    'SELECT file_name, file_data FROM knowledge_posts WHERE id = ?',
+    'SELECT file_names, file_data_array FROM knowledge_posts WHERE id = ?',
     [id],
     (err, row) => {
       if (err) {
@@ -1129,20 +1163,34 @@ app.get('/api/knowledge-posts/:id/file', (req, res) => {
         console.error(err);
         return res.status(500).json({ error: 'DB error' });
       }
-      if (!row || !row.file_data) {
+      if (!row || !row.file_data_array) {
         return res.status(404).json({ error: 'File not found' });
       }
       
+      let fileNames = [];
+      let fileDataArray = [];
+      
+      try {
+        fileNames = row.file_names ? JSON.parse(row.file_names) : [];
+        fileDataArray = row.file_data_array ? JSON.parse(row.file_data_array) : [];
+      } catch {
+        return res.status(500).json({ error: 'Invalid file data format' });
+      }
+      
+      if (index < 0 || index >= fileNames.length || index >= fileDataArray.length) {
+        return res.status(404).json({ error: 'File index out of range' });
+      }
+      
       res.setHeader('Content-Type', 'application/octet-stream');
-      res.setHeader('Content-Disposition', `attachment; filename="${row.file_name}"`);
-      res.send(Buffer.from(row.file_data, 'base64'));
+      res.setHeader('Content-Disposition', `attachment; filename="${fileNames[index]}"`);
+      res.send(Buffer.from(fileDataArray[index], 'base64'));
     }
   );
 });
 
 // 게시글 생성
 app.post('/api/knowledge-posts', (req, res) => {
-  const { category, title, content, employeeId, fileName, fileData } = req.body;
+  const { category, title, content, employeeId, fileNames, fileDataArray } = req.body;
   
   if (!category || !title || !content || !employeeId) {
     return res.status(400).json({ error: 'category, title, content, employeeId are required' });
@@ -1151,9 +1199,13 @@ app.post('/api/knowledge-posts', (req, res) => {
   const id = `knowledge-${Date.now()}-${Math.random().toString(16).slice(2)}`;
   const createdAt = Date.now();
   
+  // 파일 정보를 JSON 문자열로 변환
+  const fileNamesJson = fileNames && fileNames.length > 0 ? JSON.stringify(fileNames) : null;
+  const fileDataArrayJson = fileDataArray && fileDataArray.length > 0 ? JSON.stringify(fileDataArray) : null;
+  
   db.run(
-    'INSERT INTO knowledge_posts (id, category, title, content, employee_id, file_name, file_data, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-    [id, category, title, content, employeeId, fileName || null, fileData || null, createdAt],
+    'INSERT INTO knowledge_posts (id, category, title, content, employee_id, file_names, file_data_array, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    [id, category, title, content, employeeId, fileNamesJson, fileDataArrayJson, createdAt],
     (err) => {
       if (err) {
         // eslint-disable-next-line no-console
@@ -1173,7 +1225,7 @@ app.post('/api/knowledge-posts', (req, res) => {
             content,
             employeeId,
             employeeName: user ? user.name : employeeId,
-            fileName: fileName || null,
+            fileNames: fileNames || [],
             createdAt,
             updatedAt: null
           });
@@ -1186,7 +1238,7 @@ app.post('/api/knowledge-posts', (req, res) => {
 // 게시글 수정
 app.put('/api/knowledge-posts/:id', (req, res) => {
   const { id } = req.params;
-  const { title, content, employeeId, fileName, fileData } = req.body;
+  const { title, content, employeeId, fileNames, fileDataArray } = req.body;
   
   if (!employeeId) {
     return res.status(400).json({ error: 'employeeId is required' });
@@ -1209,12 +1261,20 @@ app.put('/api/knowledge-posts/:id', (req, res) => {
         return res.status(403).json({ error: 'Only the author can edit this post' });
       }
       
-      const updateQuery = fileName !== undefined
-        ? 'UPDATE knowledge_posts SET title = ?, content = ?, file_name = ?, file_data = ?, updated_at = ? WHERE id = ?'
+      // 파일 정보를 JSON 문자열로 변환
+      const fileNamesJson = fileNames !== undefined
+        ? (fileNames && fileNames.length > 0 ? JSON.stringify(fileNames) : null)
+        : undefined;
+      const fileDataArrayJson = fileDataArray !== undefined
+        ? (fileDataArray && fileDataArray.length > 0 ? JSON.stringify(fileDataArray) : null)
+        : undefined;
+      
+      const updateQuery = fileNamesJson !== undefined
+        ? 'UPDATE knowledge_posts SET title = ?, content = ?, file_names = ?, file_data_array = ?, updated_at = ? WHERE id = ?'
         : 'UPDATE knowledge_posts SET title = ?, content = ?, updated_at = ? WHERE id = ?';
       
-      const params = fileName !== undefined
-        ? [title, content, fileName || null, fileData || null, Date.now(), id]
+      const params = fileNamesJson !== undefined
+        ? [title, content, fileNamesJson, fileDataArrayJson, Date.now(), id]
         : [title, content, Date.now(), id];
       
       db.run(updateQuery, params, (updateErr) => {
@@ -1226,7 +1286,7 @@ app.put('/api/knowledge-posts/:id', (req, res) => {
         
         // 업데이트된 게시글 조회
         db.get(
-          'SELECT id, category, title, content, employee_id, file_name, created_at, updated_at FROM knowledge_posts WHERE id = ?',
+          'SELECT id, category, title, content, employee_id, file_names, file_data_array, created_at, updated_at FROM knowledge_posts WHERE id = ?',
           [id],
           (selectErr, updatedRow) => {
             if (selectErr) {
@@ -1235,12 +1295,22 @@ app.put('/api/knowledge-posts/:id', (req, res) => {
               return res.status(500).json({ error: 'DB error' });
             }
             
+            let fileNames = [];
+            if (updatedRow.file_names) {
+              try {
+                fileNames = JSON.parse(updatedRow.file_names);
+              } catch {
+                // 파싱 실패 시 빈 배열
+              }
+            }
+            
             db.get(
               'SELECT name FROM users WHERE employee_id = ?',
               [updatedRow.employee_id],
               (nameErr, user) => {
                 return res.json({
                   ...updatedRow,
+                  fileNames,
                   employeeName: user ? user.name : updatedRow.employee_id
                 });
               }
