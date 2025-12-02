@@ -6,6 +6,7 @@ import ActivityFeed from './components/ActivityFeed';
 import CoinEconomySection from './components/CoinEconomySection';
 import QuickLinks from './components/QuickLinks';
 import InnovationPage from './pages/InnovationPage';
+import KeptubePage from './pages/KeptubePage';
 import KnowledgeHubPage from './pages/KnowledgeHubPage';
 import GovernancePage from './pages/GovernancePage';
 import PlaygroundPage from './pages/PlaygroundPage';
@@ -59,6 +60,7 @@ const App: React.FC = () => {
             />
             <Route path="/playground" element={<PlaygroundPage />} />
             <Route path="/innovation" element={<InnovationPage />} />
+            <Route path="/keptube" element={<KeptubePage />} />
             <Route path="/rewards" element={<RewardsPage />} />
             <Route path="/knowledge" element={<KnowledgeHubPage />} />
             <Route path="/governance" element={<GovernancePage />} />

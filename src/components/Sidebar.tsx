@@ -75,6 +75,21 @@ const Sidebar: React.FC = () => {
           <span>아이디어 Zone</span>
         </NavLink>
         <NavLink
+          to="/keptube"
+          className={({ isActive }) =>
+            `${linkBase} ${
+              isActive
+                ? 'bg-kepco-blue/20 text-kepco-sky ring-kepco-sky/60'
+                : 'text-slate-300 hover:bg-slate-800/70 hover:text-kepco-sky'
+            }`
+          }
+        >
+          <span className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-slate-800 text-xs">
+            📺
+          </span>
+          <span>KEPTUBE</span>
+        </NavLink>
+        <NavLink
           to="/knowledge"
           className={({ isActive }) =>
             `${linkBase} ${

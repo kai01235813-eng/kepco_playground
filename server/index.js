@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const sqlite3 = require('sqlite3').verbose();
+const xml2js = require('xml2js');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -756,6 +757,57 @@ app.post('/api/auth/change-password', (req, res) => {
       );
     }
   );
+});
+
+// KEPTUBE: 유튜브 RSS 피드에서 최신 동영상 가져오기
+app.get('/api/keptube/videos', async (req, res) => {
+  try {
+    const RSS_URL = 'https://www.youtube.com/feeds/videos.xml?channel_id=UCTtryp9npI1d8nLrRyKyGkA';
+    
+    // RSS 피드 가져오기
+    const response = await fetch(RSS_URL);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch RSS feed: ${response.status}`);
+    }
+    
+    const xmlData = await response.text();
+    
+    // XML 파싱
+    const parser = new xml2js.Parser();
+    const result = await parser.parseStringPromise(xmlData);
+    
+    // 동영상 정보 추출
+    const entries = result.feed?.entry || [];
+    const videos = entries.slice(0, 8).map((entry) => {
+      // 동영상 ID 추출 (yt:videoId 또는 entry.id에서)
+      const videoId = entry['yt:videoId']?.[0] || entry.id?.[0]?.split(':').pop() || '';
+      const title = entry.title?.[0] || '';
+      const published = entry.published?.[0] || '';
+      const author = entry.author?.[0]?.name?.[0] || '에너지인사이트';
+      
+      return {
+        videoId,
+        title,
+        published,
+        author
+      };
+    }).filter(video => video.videoId); // videoId가 있는 것만 필터링
+    
+    return res.json({
+      success: true,
+      videos,
+      channelName: '에너지인사이트',
+      channelId: 'UCTtryp9npI1d8nLrRyKyGkA'
+    });
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error('[KEPTUBE] Error fetching videos:', error);
+    return res.status(500).json({
+      success: false,
+      error: '동영상 정보를 가져오는데 실패했습니다.',
+      details: error.message
+    });
+  }
 });
 
 // 투표 내역 API
