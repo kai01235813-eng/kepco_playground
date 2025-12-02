@@ -151,13 +151,26 @@ const PostDetail: React.FC<PostDetailProps> = ({
     e.preventDefault();
     if (!postId || !commentContent.trim() || !commentPassword.trim()) return;
     try {
+      // 로그인한 사용자 정보 가져오기
+      let employeeId: string | undefined;
+      try {
+        const userStr = localStorage.getItem('user');
+        if (userStr) {
+          const user = JSON.parse(userStr);
+          employeeId = user.employeeId;
+        }
+      } catch {
+        // 로그인 정보가 없으면 무시
+      }
+      
       const res = await fetch(`${API_BASE}/comments`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           postId,
           content: commentContent.trim(),
-          password: commentPassword
+          password: commentPassword,
+          employeeId
         })
       });
       if (!res.ok) {

@@ -40,10 +40,22 @@ const IdeaZone: React.FC = () => {
   ) => {
     if (!password) return;
     try {
+      // 로그인한 사용자 정보 가져오기
+      let authorId: string | undefined;
+      try {
+        const userStr = localStorage.getItem('user');
+        if (userStr) {
+          const user = JSON.parse(userStr);
+          authorId = user.employeeId;
+        }
+      } catch {
+        // 로그인 정보가 없으면 무시
+      }
+      
       const res = await fetch(`${API_BASE}/posts`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, content, password })
+        body: JSON.stringify({ title, content, password, authorId })
       });
       if (!res.ok) {
         alert('아이디어 등록에 실패했습니다.');

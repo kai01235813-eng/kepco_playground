@@ -59,7 +59,23 @@ db.serialize(() => {
       title TEXT NOT NULL,
       content TEXT NOT NULL,
       password TEXT NOT NULL,
+      author_id TEXT,
       created_at INTEGER NOT NULL
+    )`
+  );
+  
+  // 기존 테이블 마이그레이션: author_id 컬럼 추가
+  db.run(`ALTER TABLE posts ADD COLUMN author_id TEXT`, () => {
+    // 컬럼이 이미 존재하면 에러 발생 (무시)
+  });
+  
+  db.run(
+    `CREATE TABLE IF NOT EXISTS hot_ideas (
+      id TEXT PRIMARY KEY,
+      post_id TEXT NOT NULL,
+      week_start_date TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      UNIQUE(post_id, week_start_date)
     )`
   );
 
@@ -88,11 +104,32 @@ db.serialize(() => {
     `CREATE TABLE IF NOT EXISTS vote_history (
       id TEXT PRIMARY KEY,
       employee_id TEXT NOT NULL,
-      post_id TEXT NOT NULL,
-      post_title TEXT NOT NULL,
-      vote_type TEXT NOT NULL,
-      coins_earned INTEGER DEFAULT 50,
+      post_id TEXT,
+      post_title TEXT,
+      activity_type TEXT NOT NULL DEFAULT 'vote' CHECK(activity_type IN ('vote', 'attendance', 'post', 'comment', 'hot_idea')),
+      vote_type TEXT,
+      coins_earned INTEGER DEFAULT 10,
       created_at INTEGER NOT NULL
+    )`
+  );
+  
+  // 기존 테이블 마이그레이션: activity_type 컬럼이 없으면 추가
+  db.run(`ALTER TABLE vote_history ADD COLUMN activity_type TEXT DEFAULT 'vote'`, () => {
+    // 컬럼이 이미 존재하면 에러 발생 (무시)
+  });
+  
+  // 기존 데이터 마이그레이션: vote_type을 activity_type으로 복사 (투표인 경우)
+  db.run(`UPDATE vote_history SET activity_type = 'vote' WHERE activity_type IS NULL OR activity_type = ''`, () => {
+    // 업데이트 완료
+  });
+  
+  db.run(
+    `CREATE TABLE IF NOT EXISTS hot_ideas (
+      id TEXT PRIMARY KEY,
+      post_id TEXT NOT NULL,
+      week_start_date TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      UNIQUE(post_id, week_start_date)
     )`
   );
 
@@ -273,7 +310,7 @@ app.post('/api/auth/login', (req, res) => {
 app.get('/api/vote-history/:employeeId', (req, res) => {
   const { employeeId } = req.params;
   db.all(
-    'SELECT id, post_id, post_title, vote_type, coins_earned, created_at FROM vote_history WHERE employee_id = ? ORDER BY created_at DESC LIMIT 10',
+    'SELECT id, post_id as postId, post_title as postTitle, activity_type as activityType, vote_type as voteType, coins_earned as coinsEarned, created_at as createdAt FROM vote_history WHERE employee_id = ? ORDER BY created_at DESC LIMIT 20',
     [employeeId],
     (err, rows) => {
       if (err) {
@@ -309,7 +346,7 @@ app.get('/api/anonymous-posts', (req, res) => {
 });
 
 app.post('/api/anonymous-posts', (req, res) => {
-  const { category, content, password } = req.body;
+  const { category, content, password, employeeId } = req.body;
   if (
     (category !== 'suggestion' && category !== 'proposal') ||
     !content ||
@@ -330,6 +367,34 @@ app.post('/api/anonymous-posts', (req, res) => {
         console.error(err);
         return res.status(500).json({ error: 'DB error' });
       }
+      
+      // 로그인한 사용자면 코인 지급 및 히스토리 기록
+      if (employeeId) {
+        const categoryName = category === 'suggestion' ? '건의' : '운영방향 제안';
+        const historyId = `vh-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+        db.run(
+          'INSERT INTO vote_history (id, employee_id, post_id, post_title, activity_type, vote_type, coins_earned, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+          [historyId, employeeId, id, `${categoryName} 작성`, 'post', null, 10, createdAt],
+          (historyErr) => {
+            if (historyErr) {
+              // eslint-disable-next-line no-console
+              console.error('[POST] History insert error:', historyErr);
+            }
+            // 코인 지급
+            db.run(
+              'UPDATE users SET coin_balance = coin_balance + ? WHERE employee_id = ?',
+              [10, employeeId],
+              (coinErr) => {
+                if (coinErr) {
+                  // eslint-disable-next-line no-console
+                  console.error('[POST] Coin update error:', coinErr);
+                }
+              }
+            );
+          }
+        );
+      }
+      
       return res.status(201).json({
         id,
         category,
@@ -489,15 +554,15 @@ app.get('/api/posts', (req, res) => {
 });
 
 app.post('/api/posts', (req, res) => {
-  const { title, content, password } = req.body;
+  const { title, content, password, authorId } = req.body;
   if (!title || !content || !password) {
     return res.status(400).json({ error: 'Invalid payload' });
   }
   const id = `post-${Date.now()}-${Math.random().toString(16).slice(2)}`;
   const createdAt = Date.now();
   db.run(
-    'INSERT INTO posts (id, title, content, password, created_at) VALUES (?, ?, ?, ?, ?)',
-    [id, title, content, password, createdAt],
+    'INSERT INTO posts (id, title, content, password, author_id, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+    [id, title, content, password, authorId || null, createdAt],
     (err) => {
       if (err) {
         // eslint-disable-next-line no-console
@@ -623,26 +688,63 @@ app.get('/api/comments', (req, res) => {
 });
 
 app.post('/api/comments', (req, res) => {
-  const { postId, content, password } = req.body;
+  const { postId, content, password, employeeId } = req.body;
   if (!postId || !content || !password) {
     return res.status(400).json({ error: 'Invalid payload' });
   }
   const id = `comment-${Date.now()}-${Math.random().toString(16).slice(2)}`;
   const createdAt = Date.now();
-  db.run(
-    'INSERT INTO comments (id, post_id, content, password, created_at) VALUES (?, ?, ?, ?, ?)',
-    [id, postId, content, password, createdAt],
-    (err) => {
-      if (err) {
-        // eslint-disable-next-line no-console
-        console.error(err);
-        return res.status(500).json({ error: 'DB error' });
-      }
-      return res
-        .status(201)
-        .json({ id, postId, content, createdAt });
+  
+  // 먼저 게시글 제목 가져오기
+  db.get('SELECT title FROM posts WHERE id = ?', [postId], (postErr, post) => {
+    if (postErr) {
+      // eslint-disable-next-line no-console
+      console.error(postErr);
+      return res.status(500).json({ error: 'DB error' });
     }
-  );
+    
+    db.run(
+      'INSERT INTO comments (id, post_id, content, password, created_at) VALUES (?, ?, ?, ?, ?)',
+      [id, postId, content, password, createdAt],
+      (err) => {
+        if (err) {
+          // eslint-disable-next-line no-console
+          console.error(err);
+          return res.status(500).json({ error: 'DB error' });
+        }
+        
+        // 로그인한 사용자면 코인 지급 및 히스토리 기록
+        if (employeeId && post) {
+          const historyId = `vh-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+          db.run(
+            'INSERT INTO vote_history (id, employee_id, post_id, post_title, activity_type, vote_type, coins_earned, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+            [historyId, employeeId, postId, `"${post.title}" 댓글 작성`, 'comment', null, 10, createdAt],
+            (historyErr) => {
+              if (historyErr) {
+                // eslint-disable-next-line no-console
+                console.error('[COMMENT] History insert error:', historyErr);
+              }
+              // 코인 지급
+              db.run(
+                'UPDATE users SET coin_balance = coin_balance + ? WHERE employee_id = ?',
+                [10, employeeId],
+                (coinErr) => {
+                  if (coinErr) {
+                    // eslint-disable-next-line no-console
+                    console.error('[COMMENT] Coin update error:', coinErr);
+                  }
+                }
+              );
+            }
+          );
+        }
+        
+        return res
+          .status(201)
+          .json({ id, postId, content, createdAt });
+      }
+    );
+  });
 });
 
 app.put('/api/comments/:id', (req, res) => {
@@ -762,8 +864,8 @@ app.post('/api/posts/:id/vote', (req, res) => {
                       if (employeeId) {
                         const historyId = `vh-${Date.now()}-${Math.random().toString(16).slice(2)}`;
                         db.run(
-                          'INSERT INTO vote_history (id, employee_id, post_id, post_title, vote_type, coins_earned, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-                          [historyId, employeeId, id, post.title, voteType, 50, Date.now()],
+                      'INSERT INTO vote_history (id, employee_id, post_id, post_title, activity_type, vote_type, coins_earned, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                      [historyId, employeeId, id, post.title, 'vote', voteType, 50, Date.now()],
                           (historyErr) => {
                             if (historyErr) {
                               // eslint-disable-next-line no-console
@@ -830,8 +932,8 @@ app.post('/api/posts/:id/vote', (req, res) => {
                 if (employeeId) {
                   const historyId = `vh-${Date.now()}-${Math.random().toString(16).slice(2)}`;
                   db.run(
-                    'INSERT INTO vote_history (id, employee_id, post_id, post_title, vote_type, coins_earned, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-                    [historyId, employeeId, id, post.title, voteType, 50, Date.now()],
+                      'INSERT INTO vote_history (id, employee_id, post_id, post_title, activity_type, vote_type, coins_earned, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                      [historyId, employeeId, id, post.title, 'vote', voteType, 50, Date.now()],
                     (historyErr) => {
                       if (historyErr) {
                         // eslint-disable-next-line no-console
@@ -1034,8 +1136,8 @@ app.post('/api/attendance/check', (req, res) => {
                     // 출석체크 내역을 vote_history에 기록 (활동 피드에 표시하기 위해)
                     const historyId = `vh-${Date.now()}-${Math.random().toString(16).slice(2)}`;
                     db.run(
-                      'INSERT INTO vote_history (id, employee_id, post_id, post_title, vote_type, coins_earned, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-                      [historyId, employeeId, 'attendance', '출석체크', 'attendance', 10, createdAt],
+                      'INSERT INTO vote_history (id, employee_id, post_id, post_title, activity_type, vote_type, coins_earned, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                      [historyId, employeeId, null, '출석체크', 'attendance', null, 10, createdAt],
                       (historyErr) => {
                         if (historyErr) {
                           console.error('[ATTENDANCE] History insert error:', historyErr);
@@ -1061,6 +1163,139 @@ app.post('/api/attendance/check', (req, res) => {
       }
     );
   });
+});
+
+// 실시간 랭킹 API (현재 코인 잔액 기준)
+app.get('/api/rankings/live', (req, res) => {
+  db.all(
+    `SELECT 
+      employee_id as employeeId,
+      name,
+      coin_balance as coinBalance,
+      RANK() OVER (ORDER BY coin_balance DESC) as rank
+    FROM users
+    WHERE coin_balance > 0
+    ORDER BY coin_balance DESC
+    LIMIT 100`,
+    [],
+    (err, rows) => {
+      if (err) {
+        // eslint-disable-next-line no-console
+        console.error('[RANKING] DB error:', err);
+        return res.status(500).json({ error: 'DB error' });
+      }
+      return res.json(rows);
+    }
+  );
+});
+
+// 일일 랭킹 스냅샷 조회 API
+app.get('/api/rankings/daily/:date?', (req, res) => {
+  const date = req.params.date || new Date().toISOString().split('T')[0]; // YYYY-MM-DD 형식
+  
+  db.all(
+    `SELECT 
+      employee_id as employeeId,
+      name,
+      coin_balance as coinBalance,
+      rank
+    FROM daily_rankings
+    WHERE ranking_date = ?
+    ORDER BY rank ASC
+    LIMIT 100`,
+    [date],
+    (err, rows) => {
+      if (err) {
+        // eslint-disable-next-line no-console
+        console.error('[RANKING] DB error:', err);
+        return res.status(500).json({ error: 'DB error' });
+      }
+      return res.json({ date, rankings: rows });
+    }
+  );
+});
+
+// 일일 랭킹 스냅샷 생성 API (자정에 자동 실행 또는 수동 실행)
+app.post('/api/rankings/daily/snapshot', (req, res) => {
+  const now = new Date();
+  const date = now.toISOString().split('T')[0]; // YYYY-MM-DD 형식
+  
+  // eslint-disable-next-line no-console
+  console.log('[RANKING] Creating daily snapshot for:', date);
+  
+  // 현재 사용자들의 코인 잔액을 기준으로 랭킹 생성
+  db.all(
+    `SELECT 
+      employee_id,
+      name,
+      coin_balance,
+      RANK() OVER (ORDER BY coin_balance DESC) as rank
+    FROM users
+    WHERE coin_balance > 0
+    ORDER BY coin_balance DESC`,
+    [],
+    (err, users) => {
+      if (err) {
+        // eslint-disable-next-line no-console
+        console.error('[RANKING] DB error:', err);
+        return res.status(500).json({ error: 'DB error' });
+      }
+      
+      if (users.length === 0) {
+        return res.json({ message: '랭킹을 생성할 사용자가 없습니다.', date, count: 0 });
+      }
+      
+      // 기존 스냅샷 삭제 (같은 날짜)
+      db.run(
+        'DELETE FROM daily_rankings WHERE ranking_date = ?',
+        [date],
+        (deleteErr) => {
+          if (deleteErr) {
+            // eslint-disable-next-line no-console
+            console.error('[RANKING] Delete error:', deleteErr);
+            return res.status(500).json({ error: 'Failed to delete old snapshot' });
+          }
+          
+          // 새 스냅샷 삽입
+          const stmt = db.prepare(
+            'INSERT INTO daily_rankings (id, employee_id, name, coin_balance, rank, ranking_date, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+          );
+          
+          const createdAt = Date.now();
+          let inserted = 0;
+          users.forEach((user) => {
+            const id = `rank-${date}-${user.employee_id}-${createdAt}`;
+            stmt.run(
+              id,
+              user.employee_id,
+              user.name,
+              user.coin_balance,
+              user.rank,
+              date,
+              createdAt
+            );
+            inserted++;
+          });
+          
+          stmt.finalize((finalizeErr) => {
+            if (finalizeErr) {
+              // eslint-disable-next-line no-console
+              console.error('[RANKING] Finalize error:', finalizeErr);
+              return res.status(500).json({ error: 'Failed to create snapshot' });
+            }
+            
+            // eslint-disable-next-line no-console
+            console.log('[RANKING] Snapshot created:', inserted, 'users');
+            return res.json({
+              message: '일일 랭킹 스냅샷이 생성되었습니다.',
+              date,
+              count: inserted
+            });
+          });
+        }
+      );
+    }
+  );
 });
 
 // 프로세스 종료 시 데이터베이스 연결 종료

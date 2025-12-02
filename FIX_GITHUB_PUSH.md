@@ -51,3 +51,4 @@ git push -u origin main
 - `repo` scope 선택
 - 생성된 토큰을 복사하여 비밀번호로 사용
 
+

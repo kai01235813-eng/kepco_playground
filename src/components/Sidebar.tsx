@@ -105,6 +105,21 @@ const Sidebar: React.FC = () => {
           <span>집단 지성</span>
         </NavLink>
         <NavLink
+          to="/ranking"
+          className={({ isActive }) =>
+            `${linkBase} ${
+              isActive
+                ? 'bg-kepco-blue/20 text-kepco-sky ring-kepco-sky/60'
+                : 'text-slate-300 hover:bg-slate-800/70 hover:text-kepco-sky'
+            }`
+          }
+        >
+          <span className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-slate-800 text-xs">
+            🏆
+          </span>
+          <span>PLAYER 랭킹</span>
+        </NavLink>
+        <NavLink
           to="/rewards"
           className={({ isActive }) =>
             `${linkBase} ${
@@ -133,6 +148,24 @@ const Sidebar: React.FC = () => {
             💰
           </span>
           <span>토크노믹스</span>
+        </NavLink>
+        
+        <div className="my-2 border-t border-slate-800/70" />
+        
+        <NavLink
+          to="/admin"
+          className={({ isActive }) =>
+            `${linkBase} ${
+              isActive
+                ? 'bg-amber-500/20 text-amber-300 ring-amber-400/60'
+                : 'text-slate-300 hover:bg-slate-800/70 hover:text-amber-300'
+            }`
+          }
+        >
+          <span className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-amber-500/30 text-xs">
+            ⚙️
+          </span>
+          <span>관리자</span>
         </NavLink>
       </nav>
 

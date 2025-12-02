@@ -11,7 +11,9 @@ import GovernancePage from './pages/GovernancePage';
 import PlaygroundPage from './pages/PlaygroundPage';
 import PurposePage from './pages/PurposePage';
 import TokenomicsPage from './pages/TokenomicsPage';
+import AdminPage from './pages/AdminPage';
 import RewardsPage from './pages/RewardsPage';
+import RankingPage from './pages/RankingPage';
 import LoginPopupPage from './pages/LoginPopupPage';
 import { Route, Routes, useLocation } from 'react-router-dom';
 import AnonymousBoard from './components/AnonymousBoard/AnonymousBoard';
@@ -60,8 +62,10 @@ const App: React.FC = () => {
             <Route path="/rewards" element={<RewardsPage />} />
             <Route path="/knowledge" element={<KnowledgeHubPage />} />
             <Route path="/governance" element={<GovernancePage />} />
+            <Route path="/ranking" element={<RankingPage />} />
             <Route path="/tokenomics" element={<TokenomicsPage />} />
             <Route path="/purpose" element={<PurposePage />} />
+            <Route path="/admin" element={<AdminPage />} />
           </Routes>
         </main>
 

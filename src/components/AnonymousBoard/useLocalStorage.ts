@@ -40,10 +40,22 @@ export const useLocalStoragePosts = () => {
     password: string
   ) => {
     try {
+      // 로그인한 사용자 정보 가져오기
+      let employeeId: string | undefined;
+      try {
+        const userStr = localStorage.getItem('user');
+        if (userStr) {
+          const user = JSON.parse(userStr);
+          employeeId = user.employeeId;
+        }
+      } catch {
+        // 로그인 정보가 없으면 무시
+      }
+      
       const res = await fetch(`${API_BASE}/anonymous-posts`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ category, content, password })
+        body: JSON.stringify({ category, content, password, employeeId })
       });
       if (!res.ok) throw new Error('Failed to create post');
       const created = (await res.json()) as Post;
