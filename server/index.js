@@ -651,7 +651,7 @@ app.post('/api/auth/login', (req, res) => {
     return res.status(400).json({ error: '사번과 비밀번호를 입력해주세요.' });
   }
   db.get(
-    'SELECT employee_id, name, coin_balance FROM users WHERE employee_id = ? AND password = ?',
+    'SELECT employee_id, name, coin_balance, is_admin FROM users WHERE employee_id = ? AND password = ?',
     [employeeId, password],
     (err, row) => {
       if (err) {
@@ -665,7 +665,46 @@ app.post('/api/auth/login', (req, res) => {
       return res.json({
         employeeId: row.employee_id,
         name: row.name,
-        coinBalance: row.coin_balance
+        coinBalance: row.coin_balance,
+        isAdmin: row.is_admin === 1
+      });
+    }
+  );
+});
+
+// 비밀번호 찾기 API
+app.post('/api/auth/find-password', (req, res) => {
+  const { employeeId, hint } = req.body;
+  if (!employeeId || !hint) {
+    return res.status(400).json({ error: '사번과 힌트를 입력해주세요.' });
+  }
+  
+  // 힌트 검증
+  if (hint !== PASSWORD_HINT) {
+    return res.status(403).json({ error: '힌트가 일치하지 않습니다.' });
+  }
+  
+  // 사용자 조회
+  db.get(
+    'SELECT employee_id, password, name FROM users WHERE employee_id = ?',
+    [employeeId],
+    (err, row) => {
+      if (err) {
+        // eslint-disable-next-line no-console
+        console.error(err);
+        return res.status(500).json({ error: 'DB error' });
+      }
+      if (!row) {
+        return res.status(404).json({ error: '해당 사번의 사용자를 찾을 수 없습니다.' });
+      }
+      
+      // eslint-disable-next-line no-console
+      console.log(`[PASSWORD FIND] Password found for employee ${employeeId}`);
+      
+      return res.json({
+        employeeId: row.employee_id,
+        name: row.name,
+        password: row.password // 비밀번호 반환
       });
     }
   );
