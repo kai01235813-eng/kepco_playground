@@ -710,6 +710,54 @@ app.post('/api/auth/find-password', (req, res) => {
   );
 });
 
+// 비밀번호 변경 API
+app.post('/api/auth/change-password', (req, res) => {
+  const { employeeId, currentPassword, newPassword } = req.body;
+  if (!employeeId || !currentPassword || !newPassword) {
+    return res.status(400).json({ error: '사번, 현재 비밀번호, 새 비밀번호를 모두 입력해주세요.' });
+  }
+  
+  // 현재 비밀번호 확인
+  db.get(
+    'SELECT employee_id, password FROM users WHERE employee_id = ?',
+    [employeeId],
+    (err, row) => {
+      if (err) {
+        // eslint-disable-next-line no-console
+        console.error(err);
+        return res.status(500).json({ error: 'DB error' });
+      }
+      if (!row) {
+        return res.status(404).json({ error: '해당 사번의 사용자를 찾을 수 없습니다.' });
+      }
+      if (row.password !== currentPassword) {
+        return res.status(403).json({ error: '현재 비밀번호가 일치하지 않습니다.' });
+      }
+      
+      // 비밀번호 변경
+      db.run(
+        'UPDATE users SET password = ? WHERE employee_id = ?',
+        [newPassword, employeeId],
+        (updateErr) => {
+          if (updateErr) {
+            // eslint-disable-next-line no-console
+            console.error(updateErr);
+            return res.status(500).json({ error: 'DB error' });
+          }
+          
+          // eslint-disable-next-line no-console
+          console.log(`[PASSWORD CHANGE] Password changed for employee ${employeeId}`);
+          
+          return res.json({
+            message: '비밀번호가 변경되었습니다.',
+            employeeId: row.employee_id
+          });
+        }
+      );
+    }
+  );
+});
+
 // 투표 내역 API
 app.get('/api/vote-history/:employeeId', (req, res) => {
   const { employeeId } = req.params;
