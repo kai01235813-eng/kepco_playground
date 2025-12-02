@@ -118,15 +118,28 @@ const HotIdeasSection: React.FC = () => {
                   <span>🗳️</span>
                   <span>투표하기</span>
                 </button>
-                {idea.url && (
-                  <button
-                    onClick={() => window.open(idea.url, '_blank', 'noopener,noreferrer')}
-                    className="inline-flex items-center justify-center gap-1 rounded-lg border border-kepco-sky/50 bg-slate-950/40 px-3 py-1.5 text-[11px] font-semibold text-kepco-sky transition hover:bg-kepco-sky/20 hover:text-slate-50"
-                  >
-                    <span>🚀</span>
-                    <span>체험하기</span>
-                  </button>
-                )}
+                <button
+                  onClick={() => {
+                    if (idea.url) {
+                      window.open(idea.url, '_blank', 'noopener,noreferrer');
+                    } else {
+                      // URL이 없으면 아이디어 상세 페이지로 이동
+                      navigate('/innovation');
+                    }
+                  }}
+                  className={`inline-flex items-center justify-center gap-1 rounded-lg border px-3 py-1.5 text-[11px] font-semibold transition ${
+                    idea.url
+                      ? 'border-kepco-sky/50 bg-slate-950/40 text-kepco-sky hover:bg-kepco-sky/20 hover:text-slate-50'
+                      : 'border-slate-600/50 bg-slate-900/40 text-slate-400 hover:bg-slate-800/40 hover:text-slate-300'
+                  }`}
+                  title={idea.url ? '체험 링크 열기' : '아이디어 상세 보기'}
+                >
+                  <span>🚀</span>
+                  <span>체험하기</span>
+                  {!idea.url && (
+                    <span className="ml-1 text-[9px] opacity-70">(준비중)</span>
+                  )}
+                </button>
               </div>
             </article>
           ))
