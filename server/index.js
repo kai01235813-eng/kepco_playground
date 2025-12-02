@@ -6,6 +6,8 @@ const sqlite3 = require('sqlite3').verbose();
 const app = express();
 const PORT = process.env.PORT || 4000;
 const DB_PATH = path.join(__dirname, 'data.sqlite');
+const MASTER_PASSWORD = '9999'; // 마스터 비밀번호
+const MAX_ADMINS = 5; // 최대 관리자 수
 
 // CORS 설정: 모든 오리진 허용 (프로덕션 환경 포함)
 app.use(cors({
@@ -36,6 +38,185 @@ app.get('/', (req, res) => {
 
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'healthy' });
+});
+
+// 관리자 관리 API
+// 관리자 목록 조회
+app.get('/api/admin/list', (req, res) => {
+  db.all(
+    'SELECT employee_id, name, created_at FROM users WHERE is_admin = 1 ORDER BY created_at ASC',
+    [],
+    (err, rows) => {
+      if (err) {
+        // eslint-disable-next-line no-console
+        console.error(err);
+        return res.status(500).json({ error: 'DB error' });
+      }
+      return res.json({
+        admins: rows.map((row) => ({
+          employeeId: row.employee_id,
+          name: row.name,
+          createdAt: row.created_at
+        })),
+        count: rows.length,
+        maxCount: MAX_ADMINS
+      });
+    }
+  );
+});
+
+// 관리자 추가
+app.post('/api/admin/add', (req, res) => {
+  const { employeeId, requesterId } = req.body;
+  
+  if (!employeeId || !requesterId) {
+    return res.status(400).json({ error: 'employeeId and requesterId are required' });
+  }
+  
+  // 요청자가 관리자인지 확인
+  db.get(
+    'SELECT is_admin FROM users WHERE employee_id = ?',
+    [requesterId],
+    (err, requester) => {
+      if (err) {
+        // eslint-disable-next-line no-console
+        console.error(err);
+        return res.status(500).json({ error: 'DB error' });
+      }
+      if (!requester || requester.is_admin !== 1) {
+        return res.status(403).json({ error: 'Only admins can add other admins' });
+      }
+      
+      // 현재 관리자 수 확인
+      db.get('SELECT COUNT(*) as count FROM users WHERE is_admin = 1', [], (countErr, countRow) => {
+        if (countErr) {
+          // eslint-disable-next-line no-console
+          console.error(countErr);
+          return res.status(500).json({ error: 'DB error' });
+        }
+        
+        if (countRow.count >= MAX_ADMINS) {
+          return res.status(400).json({ 
+            error: `관리자는 최대 ${MAX_ADMINS}명까지만 지정할 수 있습니다.`,
+            currentCount: countRow.count,
+            maxCount: MAX_ADMINS
+          });
+        }
+        
+        // 추가할 사용자가 존재하는지 확인
+        db.get(
+          'SELECT employee_id, name, is_admin FROM users WHERE employee_id = ?',
+          [employeeId],
+          (userErr, user) => {
+            if (userErr) {
+              // eslint-disable-next-line no-console
+              console.error(userErr);
+              return res.status(500).json({ error: 'DB error' });
+            }
+            if (!user) {
+              return res.status(404).json({ error: 'User not found' });
+            }
+            if (user.is_admin === 1) {
+              return res.status(400).json({ error: 'User is already an admin' });
+            }
+            
+            // 관리자 권한 부여
+            db.run(
+              'UPDATE users SET is_admin = 1 WHERE employee_id = ?',
+              [employeeId],
+              (updateErr) => {
+                if (updateErr) {
+                  // eslint-disable-next-line no-console
+                  console.error(updateErr);
+                  return res.status(500).json({ error: 'DB error' });
+                }
+                // eslint-disable-next-line no-console
+                console.log(`[ADMIN] Admin added: ${employeeId} (${user.name}) by ${requesterId}`);
+                return res.json({
+                  message: 'Admin added successfully',
+                  admin: {
+                    employeeId: user.employee_id,
+                    name: user.name
+                  }
+                });
+              }
+            );
+          }
+        );
+      });
+    }
+  );
+});
+
+// 관리자 제거
+app.delete('/api/admin/remove', (req, res) => {
+  const { employeeId, requesterId } = req.body;
+  
+  if (!employeeId || !requesterId) {
+    return res.status(400).json({ error: 'employeeId and requesterId are required' });
+  }
+  
+  // 요청자가 관리자인지 확인
+  db.get(
+    'SELECT is_admin FROM users WHERE employee_id = ?',
+    [requesterId],
+    (err, requester) => {
+      if (err) {
+        // eslint-disable-next-line no-console
+        console.error(err);
+        return res.status(500).json({ error: 'DB error' });
+      }
+      if (!requester || requester.is_admin !== 1) {
+        return res.status(403).json({ error: 'Only admins can remove other admins' });
+      }
+      
+      // 자기 자신은 제거할 수 없음
+      if (employeeId === requesterId) {
+        return res.status(400).json({ error: 'Cannot remove yourself' });
+      }
+      
+      // 제거할 사용자가 관리자인지 확인
+      db.get(
+        'SELECT employee_id, name, is_admin FROM users WHERE employee_id = ?',
+        [employeeId],
+        (userErr, user) => {
+          if (userErr) {
+            // eslint-disable-next-line no-console
+            console.error(userErr);
+            return res.status(500).json({ error: 'DB error' });
+          }
+          if (!user) {
+            return res.status(404).json({ error: 'User not found' });
+          }
+          if (user.is_admin !== 1) {
+            return res.status(400).json({ error: 'User is not an admin' });
+          }
+          
+          // 관리자 권한 제거
+          db.run(
+            'UPDATE users SET is_admin = 0 WHERE employee_id = ?',
+            [employeeId],
+            (updateErr) => {
+              if (updateErr) {
+                // eslint-disable-next-line no-console
+                console.error(updateErr);
+                return res.status(500).json({ error: 'DB error' });
+              }
+              // eslint-disable-next-line no-console
+              console.log(`[ADMIN] Admin removed: ${employeeId} (${user.name}) by ${requesterId}`);
+              return res.json({
+                message: 'Admin removed successfully',
+                removed: {
+                  employeeId: user.employee_id,
+                  name: user.name
+                }
+              });
+            }
+          );
+        }
+      );
+    }
+  );
 });
 
 // 관리자용: net_score가 -1인 게시글 강제 삭제
@@ -241,9 +422,47 @@ db.serialize(() => {
       password TEXT NOT NULL,
       name TEXT NOT NULL,
       coin_balance INTEGER DEFAULT 0,
+      is_admin INTEGER DEFAULT 0,
       created_at INTEGER NOT NULL
     )`
   );
+  
+  // 기존 테이블 마이그레이션: is_admin 컬럼 추가
+  db.run(`ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0`, () => {
+    // 컬럼이 이미 존재하면 에러 발생 (무시)
+  });
+  
+  // 초기 관리자 설정 (사번: 19104290, 이름: 송진석)
+  db.get('SELECT employee_id FROM users WHERE employee_id = ?', ['19104290'], (err, row) => {
+    if (!err && !row) {
+      // 관리자가 없으면 생성 (비밀번호는 임시로 'admin123', 로그인 후 변경 권장)
+      const adminPassword = 'admin123';
+      db.run(
+        'INSERT INTO users (employee_id, password, name, coin_balance, is_admin, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+        ['19104290', adminPassword, '송진석', 0, 1, Date.now()],
+        (insertErr) => {
+          if (!insertErr) {
+            // eslint-disable-next-line no-console
+            console.log('✅ 초기 관리자 생성 완료: 사번 19104290 (송진석)');
+            // eslint-disable-next-line no-console
+            console.log('⚠️  관리자 비밀번호는 "admin123"입니다. 로그인 후 변경하세요.');
+          }
+        }
+      );
+    } else if (!err && row) {
+      // 관리자가 이미 있으면 권한 부여
+      db.run(
+        'UPDATE users SET is_admin = 1, name = ? WHERE employee_id = ?',
+        ['송진석', '19104290'],
+        (updateErr) => {
+          if (!updateErr) {
+            // eslint-disable-next-line no-console
+            console.log('✅ 관리자 권한 업데이트 완료: 사번 19104290');
+          }
+        }
+      );
+    }
+  });
 
   db.run(
     `CREATE TABLE IF NOT EXISTS vote_history (
@@ -786,7 +1005,7 @@ app.put('/api/posts/:id', (req, res) => {
 
 app.delete('/api/posts/:id', (req, res) => {
   const { id } = req.params;
-  const { password } = req.body;
+  const { password, employeeId } = req.body;
   if (!password) {
     return res.status(400).json({ error: 'Password required' });
   }
@@ -799,17 +1018,53 @@ app.delete('/api/posts/:id', (req, res) => {
     if (!row) {
       return res.status(404).json({ error: 'Post not found' });
     }
-    if (row.password !== password) {
-      return res.status(403).json({ error: 'Invalid password' });
-    }
-    db.run('DELETE FROM posts WHERE id = ?', [id], (deleteErr) => {
-      if (deleteErr) {
-        // eslint-disable-next-line no-console
-        console.error(deleteErr);
-        return res.status(500).json({ error: 'DB error' });
+    
+    // 마스터 비밀번호 또는 관리자 권한 체크
+    const isMasterPassword = password === MASTER_PASSWORD;
+    let isAdmin = false;
+    
+    if (isMasterPassword || employeeId) {
+      // 관리자 권한 확인
+      if (employeeId) {
+        db.get(
+          'SELECT is_admin FROM users WHERE employee_id = ?',
+          [employeeId],
+          (adminErr, adminRow) => {
+            if (!adminErr && adminRow && adminRow.is_admin === 1) {
+              isAdmin = true;
+            }
+            performDelete();
+          }
+        );
+      } else {
+        performDelete();
       }
-      return res.status(204).send();
-    });
+    } else {
+      // 일반 비밀번호 체크
+      if (row.password !== password) {
+        return res.status(403).json({ error: 'Invalid password' });
+      }
+      performDelete();
+    }
+    
+    function performDelete() {
+      if (row.password !== password && !isMasterPassword && !isAdmin) {
+        return res.status(403).json({ error: 'Invalid password' });
+      }
+      
+      db.run('DELETE FROM posts WHERE id = ?', [id], (deleteErr) => {
+        if (deleteErr) {
+          // eslint-disable-next-line no-console
+          console.error(deleteErr);
+          return res.status(500).json({ error: 'DB error' });
+        }
+        // eslint-disable-next-line no-console
+        if (isMasterPassword || isAdmin) {
+          console.log(`[ADMIN] Post ${id} deleted by ${isMasterPassword ? 'master password' : `admin ${employeeId}`}`);
+        }
+        return res.status(204).send();
+      });
+    }
   });
 });
 
@@ -1143,7 +1398,7 @@ app.get('/api/posts/:id/votes', (req, res) => {
 
 app.delete('/api/comments/:id', (req, res) => {
   const { id } = req.params;
-  const { password } = req.body;
+  const { password, employeeId } = req.body;
   if (!password) {
     return res.status(400).json({ error: 'Password required' });
   }
@@ -1156,18 +1411,54 @@ app.delete('/api/comments/:id', (req, res) => {
     if (!row) {
       return res.status(404).json({ error: 'Comment not found' });
     }
-    if (row.password !== password) {
-      return res.status(403).json({ error: 'Invalid password' });
-    }
-    db.run('DELETE FROM comments WHERE id = ?', [id], (deleteErr) => {
-      if (deleteErr) {
-        // eslint-disable-next-line no-console
-        console.error(deleteErr);
-        return res.status(500).json({ error: 'DB error' });
+    
+    // 마스터 비밀번호 또는 관리자 권한 체크
+    const isMasterPassword = password === MASTER_PASSWORD;
+    let isAdmin = false;
+    
+    if (isMasterPassword || employeeId) {
+      // 관리자 권한 확인
+      if (employeeId) {
+        db.get(
+          'SELECT is_admin FROM users WHERE employee_id = ?',
+          [employeeId],
+          (adminErr, adminRow) => {
+            if (!adminErr && adminRow && adminRow.is_admin === 1) {
+              isAdmin = true;
+            }
+            performDelete();
+          }
+        );
+      } else {
+        performDelete();
       }
-      return res.status(204).send();
-    });
-  }  );
+    } else {
+      // 일반 비밀번호 체크
+      if (row.password !== password) {
+        return res.status(403).json({ error: 'Invalid password' });
+      }
+      performDelete();
+    }
+    
+    function performDelete() {
+      if (row.password !== password && !isMasterPassword && !isAdmin) {
+        return res.status(403).json({ error: 'Invalid password' });
+      }
+      
+      db.run('DELETE FROM comments WHERE id = ?', [id], (deleteErr) => {
+        if (deleteErr) {
+          // eslint-disable-next-line no-console
+          console.error(deleteErr);
+          return res.status(500).json({ error: 'DB error' });
+        }
+        // eslint-disable-next-line no-console
+        if (isMasterPassword || isAdmin) {
+          console.log(`[ADMIN] Comment ${id} deleted by ${isMasterPassword ? 'master password' : `admin ${employeeId}`}`);
+        }
+        return res.status(204).send();
+      });
+    }
+  });
 });
 
 // 출석체크 상태 확인 API

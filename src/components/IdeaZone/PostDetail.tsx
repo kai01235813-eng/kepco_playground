@@ -113,15 +113,27 @@ const PostDetail: React.FC<PostDetailProps> = ({
 
   const handleDeletePost = async () => {
     if (!postId) return;
-    const pw = window.prompt('이 글의 수정/삭제 비밀번호를 입력하세요.');
+    const pw = window.prompt('이 글의 수정/삭제 비밀번호를 입력하세요.\n(관리자는 마스터 비밀번호 9999 또는 로그인 상태에서 삭제 가능)');
     if (!pw || !pw.trim()) {
       return;
     }
     try {
+      // 로그인한 사용자 정보 가져오기
+      let employeeId: string | undefined;
+      try {
+        const userStr = localStorage.getItem('user');
+        if (userStr) {
+          const user = JSON.parse(userStr);
+          employeeId = user.employeeId;
+        }
+      } catch {
+        // 로그인 정보가 없으면 무시
+      }
+      
       const res = await fetch(`${API_BASE}/posts/${postId}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: pw.trim() })
+        body: JSON.stringify({ password: pw.trim(), employeeId })
       });
       if (res.status === 204 || res.ok) {
         alert('아이디어가 삭제되었습니다.');
@@ -213,13 +225,25 @@ const PostDetail: React.FC<PostDetailProps> = ({
 
   const handleDeleteComment = async (id: string, password: string) => {
     try {
+      // 로그인한 사용자 정보 가져오기
+      let employeeId: string | undefined;
+      try {
+        const userStr = localStorage.getItem('user');
+        if (userStr) {
+          const user = JSON.parse(userStr);
+          employeeId = user.employeeId;
+        }
+      } catch {
+        // 로그인 정보가 없으면 무시
+      }
+      
       const res = await fetch(`${API_BASE}/comments/${id}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password })
+        body: JSON.stringify({ password, employeeId })
       });
       if (!res.ok) {
-        alert('댓글 삭제에 실패했습니다. 비밀번호를 확인해주세요.');
+        alert('댓글 삭제에 실패했습니다. 비밀번호를 확인해주세요.\n(관리자는 마스터 비밀번호 9999 또는 로그인 상태에서 삭제 가능)');
         return;
       }
       setComments((prev) => prev.filter((c) => c.id !== id));

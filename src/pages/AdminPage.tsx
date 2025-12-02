@@ -10,11 +10,21 @@ type HotIdea = {
   authorId?: string;
 };
 
+type Admin = {
+  employeeId: string;
+  name: string;
+  createdAt: number;
+};
+
 const AdminPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [hotIdeas, setHotIdeas] = useState<HotIdea[]>([]);
   const [rankingSnapshotLoading, setRankingSnapshotLoading] = useState(false);
+  const [admins, setAdmins] = useState<Admin[]>([]);
+  const [adminCount, setAdminCount] = useState({ current: 0, max: 5 });
+  const [newAdminId, setNewAdminId] = useState('');
+  const [adminLoading, setAdminLoading] = useState(false);
 
   const handleSelectHotIdeas = async () => {
     if (!window.confirm('HOT 아이디어 TOP3를 선발하시겠습니까?')) {
@@ -94,9 +104,123 @@ const AdminPage: React.FC = () => {
     }
   };
 
-  // 컴포넌트 마운트 시 현재 선발된 아이디어 로드
+  const loadAdmins = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/admin/list`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setAdmins(data.admins || []);
+      setAdminCount({ current: data.count || 0, max: data.maxCount || 5 });
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to load admins:', e);
+    }
+  };
+
+  const handleAddAdmin = async () => {
+    if (!newAdminId.trim()) {
+      setMessage({ type: 'error', text: '사번을 입력해주세요.' });
+      return;
+    }
+
+    const userStr = localStorage.getItem('user');
+    if (!userStr) {
+      setMessage({ type: 'error', text: '로그인이 필요합니다.' });
+      return;
+    }
+
+    const user = JSON.parse(userStr);
+    if (!user.employeeId) {
+      setMessage({ type: 'error', text: '로그인 정보를 확인할 수 없습니다.' });
+      return;
+    }
+
+    setAdminLoading(true);
+    setMessage(null);
+    try {
+      const res = await fetch(`${API_BASE}/admin/add`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          employeeId: newAdminId.trim(),
+          requesterId: user.employeeId
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || '관리자 추가에 실패했습니다.');
+      }
+
+      setMessage({
+        type: 'success',
+        text: `관리자가 추가되었습니다: ${data.admin.name} (${data.admin.employeeId})`
+      });
+      setNewAdminId('');
+      void loadAdmins();
+    } catch (e) {
+      setMessage({
+        type: 'error',
+        text: e instanceof Error ? e.message : '관리자 추가 중 오류가 발생했습니다.'
+      });
+    } finally {
+      setAdminLoading(false);
+    }
+  };
+
+  const handleRemoveAdmin = async (employeeId: string, name: string) => {
+    if (!window.confirm(`${name} (${employeeId})님의 관리자 권한을 제거하시겠습니까?`)) {
+      return;
+    }
+
+    const userStr = localStorage.getItem('user');
+    if (!userStr) {
+      setMessage({ type: 'error', text: '로그인이 필요합니다.' });
+      return;
+    }
+
+    const user = JSON.parse(userStr);
+    if (!user.employeeId) {
+      setMessage({ type: 'error', text: '로그인 정보를 확인할 수 없습니다.' });
+      return;
+    }
+
+    setAdminLoading(true);
+    setMessage(null);
+    try {
+      const res = await fetch(`${API_BASE}/admin/remove`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          employeeId,
+          requesterId: user.employeeId
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || '관리자 제거에 실패했습니다.');
+      }
+
+      setMessage({
+        type: 'success',
+        text: `관리자 권한이 제거되었습니다: ${data.removed.name} (${data.removed.employeeId})`
+      });
+      void loadAdmins();
+    } catch (e) {
+      setMessage({
+        type: 'error',
+        text: e instanceof Error ? e.message : '관리자 제거 중 오류가 발생했습니다.'
+      });
+    } finally {
+      setAdminLoading(false);
+    }
+  };
+
+  // 컴포넌트 마운트 시 현재 선발된 아이디어 및 관리자 목록 로드
   React.useEffect(() => {
     void loadHotIdeas();
+    void loadAdmins();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -214,6 +338,102 @@ const AdminPage: React.FC = () => {
           }`}
         >
           {rankingSnapshotLoading ? '생성 중...' : '📸 일일 랭킹 스냅샷 생성하기'}
+        </button>
+      </div>
+
+      <div className="glass-panel flex flex-col gap-4 p-6">
+        <div>
+          <h2 className="text-lg font-semibold text-slate-50">관리자 관리</h2>
+          <p className="mt-1 text-xs text-slate-400">
+            관리자는 게시글/댓글 삭제 시 마스터 비밀번호(9999) 없이도 삭제할 수 있습니다.
+            <br />
+            관리자는 최대 {adminCount.max}명까지 지정할 수 있습니다. (현재: {adminCount.current}명)
+          </p>
+        </div>
+
+        {message && (
+          <div
+            className={`rounded-lg border px-4 py-3 text-sm ${
+              message.type === 'success'
+                ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-300'
+                : 'border-rose-500/50 bg-rose-500/10 text-rose-300'
+            }`}
+          >
+            {message.text}
+          </div>
+        )}
+
+        <div className="flex gap-2">
+          <input
+            type="text"
+            placeholder="사번 입력"
+            value={newAdminId}
+            onChange={(e) => setNewAdminId(e.target.value)}
+            onKeyPress={(e) => {
+              if (e.key === 'Enter') {
+                void handleAddAdmin();
+              }
+            }}
+            className="flex-1 rounded-lg border border-slate-700/70 bg-slate-900/70 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-kepco-sky focus:outline-none"
+            disabled={adminLoading || adminCount.current >= adminCount.max}
+          />
+          <button
+            onClick={handleAddAdmin}
+            disabled={adminLoading || adminCount.current >= adminCount.max}
+            className={`rounded-lg px-4 py-2 font-semibold text-slate-50 transition ${
+              adminLoading || adminCount.current >= adminCount.max
+                ? 'cursor-not-allowed bg-slate-700/50'
+                : 'bg-kepco-sky hover:bg-kepco-blue'
+            }`}
+          >
+            {adminLoading ? '추가 중...' : '➕ 관리자 추가'}
+          </button>
+        </div>
+
+        {adminCount.current >= adminCount.max && (
+          <div className="rounded-lg border border-amber-500/50 bg-amber-500/10 px-4 py-2 text-sm text-amber-300">
+            ⚠️ 관리자 수가 최대치({adminCount.max}명)에 도달했습니다.
+          </div>
+        )}
+
+        <div className="mt-4">
+          <h3 className="mb-2 text-sm font-semibold text-slate-200">현재 관리자 목록</h3>
+          {admins.length === 0 ? (
+            <div className="rounded-lg border border-slate-800/70 bg-slate-900/70 px-4 py-8 text-center text-sm text-slate-400">
+              관리자가 없습니다.
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {admins.map((admin) => (
+                <div
+                  key={admin.employeeId}
+                  className="flex items-center justify-between rounded-lg border border-slate-800/70 bg-slate-900/70 px-4 py-3"
+                >
+                  <div>
+                    <p className="text-sm font-semibold text-slate-50">{admin.name}</p>
+                    <p className="text-xs text-slate-400">사번: {admin.employeeId}</p>
+                    <p className="text-xs text-slate-500">
+                      등록일: {new Date(admin.createdAt).toLocaleString('ko-KR')}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => handleRemoveAdmin(admin.employeeId, admin.name)}
+                    disabled={adminLoading}
+                    className="rounded-lg border border-rose-500/60 px-3 py-1.5 text-xs text-rose-300 transition hover:bg-rose-500/20 disabled:opacity-50"
+                  >
+                    제거
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <button
+          onClick={() => void loadAdmins()}
+          className="rounded-lg border border-slate-700/70 bg-slate-950/40 px-4 py-2 text-sm text-slate-300 transition hover:bg-slate-900/70"
+        >
+          🔄 새로고침
         </button>
       </div>
     </div>
