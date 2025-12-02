@@ -1,6 +1,6 @@
 import type React from 'react';
 import { useEffect, useState } from 'react';
-import { API_BASE } from './config/api';
+import { API_BASE } from '../config/api';
 
 type VoteActivity = {
   id: string;

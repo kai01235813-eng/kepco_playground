@@ -1,6 +1,6 @@
 import type React from 'react';
 import { useState, useEffect } from 'react';
-import { API_BASE } from './config/api';
+import { API_BASE } from '../config/api';
 
 interface SimpleLoginProps {
   onLogin?: (employeeId: string, userData: { employeeId: string; name: string }) => void;
