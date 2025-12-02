@@ -88,7 +88,7 @@ const KeptubePage: React.FC = () => {
           </div>
           
           {/* 가로 스크롤 컨테이너 */}
-          <div className="horizontal-scroll-wrapper flex gap-4 overflow-x-auto pb-4 scrollbar-thin scrollbar-track-slate-800 scrollbar-thumb-slate-600">
+          <div className="horizontal-scroll-wrapper flex gap-4 overflow-x-auto pb-4">
             {videos.map((video) => (
               <div
                 key={video.videoId}
