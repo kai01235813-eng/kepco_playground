@@ -27,7 +27,7 @@ app.options('*', (req, res) => {
   res.sendStatus(200);
 });
 
-app.use(express.json());
+app.use(express.json({ limit: '50mb' })); // 파일 업로드를 위해 크기 제한 증가
 
 // Healthcheck 엔드포인트 (Railway 배포 확인용)
 app.get('/', (req, res) => {
@@ -396,6 +396,21 @@ db.serialize(() => {
   db.run(`ALTER TABLE posts ADD COLUMN url TEXT`, () => {
     // 컬럼이 이미 존재하면 에러 발생 (무시)
   });
+
+  // 지식공유 게시판 테이블 생성
+  db.run(
+    `CREATE TABLE IF NOT EXISTS knowledge_posts (
+      id TEXT PRIMARY KEY,
+      category TEXT NOT NULL,
+      title TEXT NOT NULL,
+      content TEXT NOT NULL,
+      employee_id TEXT NOT NULL,
+      file_name TEXT,
+      file_data TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER
+    )`
+  );
   
   db.run(
     `CREATE TABLE IF NOT EXISTS hot_ideas (
@@ -1015,6 +1030,283 @@ app.delete('/api/anonymous-posts/:id', (req, res) => {
           return res.status(204).send();
         }
       );
+    }
+  );
+});
+
+// 지식공유 게시판 API
+// 게시글 목록 조회
+app.get('/api/knowledge-posts', (req, res) => {
+  const { category } = req.query;
+  let query = 'SELECT id, category, title, content, employee_id, file_name, created_at, updated_at FROM knowledge_posts';
+  const params = [];
+  
+  if (category) {
+    query += ' WHERE category = ?';
+    params.push(category);
+  }
+  
+  query += ' ORDER BY created_at DESC';
+  
+  db.all(query, params, (err, rows) => {
+    if (err) {
+      // eslint-disable-next-line no-console
+      console.error(err);
+      return res.status(500).json({ error: 'DB error' });
+    }
+    
+    // 사번으로 사용자 이름 조회
+    const postsWithNames = rows.map((row) => {
+      return new Promise((resolve) => {
+        db.get(
+          'SELECT name FROM users WHERE employee_id = ?',
+          [row.employee_id],
+          (nameErr, user) => {
+            if (nameErr || !user) {
+              resolve({
+                ...row,
+                employeeName: row.employee_id // 이름이 없으면 사번만 표시
+              });
+            } else {
+              resolve({
+                ...row,
+                employeeName: user.name
+              });
+            }
+          }
+        );
+      });
+    });
+    
+    Promise.all(postsWithNames).then((result) => {
+      return res.json(result);
+    });
+  });
+});
+
+// 게시글 상세 조회
+app.get('/api/knowledge-posts/:id', (req, res) => {
+  const { id } = req.params;
+  
+  db.get(
+    'SELECT id, category, title, content, employee_id, file_name, created_at, updated_at FROM knowledge_posts WHERE id = ?',
+    [id],
+    (err, row) => {
+      if (err) {
+        // eslint-disable-next-line no-console
+        console.error(err);
+        return res.status(500).json({ error: 'DB error' });
+      }
+      if (!row) {
+        return res.status(404).json({ error: 'Post not found' });
+      }
+      
+      // 사용자 이름 조회
+      db.get(
+        'SELECT name FROM users WHERE employee_id = ?',
+        [row.employee_id],
+        (nameErr, user) => {
+          return res.json({
+            ...row,
+            employeeName: user ? user.name : row.employee_id
+          });
+        }
+      );
+    }
+  );
+});
+
+// 파일 다운로드
+app.get('/api/knowledge-posts/:id/file', (req, res) => {
+  const { id } = req.params;
+  
+  db.get(
+    'SELECT file_name, file_data FROM knowledge_posts WHERE id = ?',
+    [id],
+    (err, row) => {
+      if (err) {
+        // eslint-disable-next-line no-console
+        console.error(err);
+        return res.status(500).json({ error: 'DB error' });
+      }
+      if (!row || !row.file_data) {
+        return res.status(404).json({ error: 'File not found' });
+      }
+      
+      res.setHeader('Content-Type', 'application/octet-stream');
+      res.setHeader('Content-Disposition', `attachment; filename="${row.file_name}"`);
+      res.send(Buffer.from(row.file_data, 'base64'));
+    }
+  );
+});
+
+// 게시글 생성
+app.post('/api/knowledge-posts', (req, res) => {
+  const { category, title, content, employeeId, fileName, fileData } = req.body;
+  
+  if (!category || !title || !content || !employeeId) {
+    return res.status(400).json({ error: 'category, title, content, employeeId are required' });
+  }
+  
+  const id = `knowledge-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const createdAt = Date.now();
+  
+  db.run(
+    'INSERT INTO knowledge_posts (id, category, title, content, employee_id, file_name, file_data, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    [id, category, title, content, employeeId, fileName || null, fileData || null, createdAt],
+    (err) => {
+      if (err) {
+        // eslint-disable-next-line no-console
+        console.error(err);
+        return res.status(500).json({ error: 'DB error' });
+      }
+      
+      // 사용자 이름 조회
+      db.get(
+        'SELECT name FROM users WHERE employee_id = ?',
+        [employeeId],
+        (nameErr, user) => {
+          return res.status(201).json({
+            id,
+            category,
+            title,
+            content,
+            employeeId,
+            employeeName: user ? user.name : employeeId,
+            fileName: fileName || null,
+            createdAt,
+            updatedAt: null
+          });
+        }
+      );
+    }
+  );
+});
+
+// 게시글 수정
+app.put('/api/knowledge-posts/:id', (req, res) => {
+  const { id } = req.params;
+  const { title, content, employeeId, fileName, fileData } = req.body;
+  
+  if (!employeeId) {
+    return res.status(400).json({ error: 'employeeId is required' });
+  }
+  
+  // 작성자 확인
+  db.get(
+    'SELECT employee_id FROM knowledge_posts WHERE id = ?',
+    [id],
+    (err, row) => {
+      if (err) {
+        // eslint-disable-next-line no-console
+        console.error(err);
+        return res.status(500).json({ error: 'DB error' });
+      }
+      if (!row) {
+        return res.status(404).json({ error: 'Post not found' });
+      }
+      if (row.employee_id !== employeeId) {
+        return res.status(403).json({ error: 'Only the author can edit this post' });
+      }
+      
+      const updateQuery = fileName !== undefined
+        ? 'UPDATE knowledge_posts SET title = ?, content = ?, file_name = ?, file_data = ?, updated_at = ? WHERE id = ?'
+        : 'UPDATE knowledge_posts SET title = ?, content = ?, updated_at = ? WHERE id = ?';
+      
+      const params = fileName !== undefined
+        ? [title, content, fileName || null, fileData || null, Date.now(), id]
+        : [title, content, Date.now(), id];
+      
+      db.run(updateQuery, params, (updateErr) => {
+        if (updateErr) {
+          // eslint-disable-next-line no-console
+          console.error(updateErr);
+          return res.status(500).json({ error: 'DB error' });
+        }
+        
+        // 업데이트된 게시글 조회
+        db.get(
+          'SELECT id, category, title, content, employee_id, file_name, created_at, updated_at FROM knowledge_posts WHERE id = ?',
+          [id],
+          (selectErr, updatedRow) => {
+            if (selectErr) {
+              // eslint-disable-next-line no-console
+              console.error(selectErr);
+              return res.status(500).json({ error: 'DB error' });
+            }
+            
+            db.get(
+              'SELECT name FROM users WHERE employee_id = ?',
+              [updatedRow.employee_id],
+              (nameErr, user) => {
+                return res.json({
+                  ...updatedRow,
+                  employeeName: user ? user.name : updatedRow.employee_id
+                });
+              }
+            );
+          }
+        );
+      });
+    }
+  );
+});
+
+// 게시글 삭제
+app.delete('/api/knowledge-posts/:id', (req, res) => {
+  const { id } = req.params;
+  const { employeeId } = req.body;
+  
+  if (!employeeId) {
+    return res.status(400).json({ error: 'employeeId is required' });
+  }
+  
+  // 작성자 확인
+  db.get(
+    'SELECT employee_id FROM knowledge_posts WHERE id = ?',
+    [id],
+    (err, row) => {
+      if (err) {
+        // eslint-disable-next-line no-console
+        console.error(err);
+        return res.status(500).json({ error: 'DB error' });
+      }
+      if (!row) {
+        return res.status(404).json({ error: 'Post not found' });
+      }
+      if (row.employee_id !== employeeId) {
+        // 관리자 확인
+        db.get(
+          'SELECT is_admin FROM users WHERE employee_id = ?',
+          [employeeId],
+          (adminErr, user) => {
+            if (adminErr || !user || user.is_admin !== 1) {
+              return res.status(403).json({ error: 'Only the author or admin can delete this post' });
+            }
+            
+            // 관리자는 삭제 가능
+            db.run('DELETE FROM knowledge_posts WHERE id = ?', [id], (deleteErr) => {
+              if (deleteErr) {
+                // eslint-disable-next-line no-console
+                console.error(deleteErr);
+                return res.status(500).json({ error: 'DB error' });
+              }
+              return res.status(204).send();
+            });
+          }
+        );
+        return;
+      }
+      
+      // 작성자 본인은 삭제 가능
+      db.run('DELETE FROM knowledge_posts WHERE id = ?', [id], (deleteErr) => {
+        if (deleteErr) {
+          // eslint-disable-next-line no-console
+          console.error(deleteErr);
+          return res.status(500).json({ error: 'DB error' });
+        }
+        return res.status(204).send();
+      });
     }
   );
 });

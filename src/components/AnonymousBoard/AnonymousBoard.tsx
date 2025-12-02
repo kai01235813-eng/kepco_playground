@@ -12,6 +12,7 @@ const AnonymousBoard: React.FC = () => {
     useLocalStoragePosts();
   const [activeTab, setActiveTab] = useState<TabKey>('info');
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [isMinimized, setIsMinimized] = useState(false);
 
   const handleCreate = (category: PostCategory, content: string, password?: string) => {
     if (!password) return;
@@ -56,7 +57,18 @@ const AnonymousBoard: React.FC = () => {
               </p>
             </div>
           </div>
+          <button
+            type="button"
+            onClick={() => setIsMinimized(!isMinimized)}
+            className="ml-2 rounded p-1 text-slate-400 hover:bg-slate-800/70 hover:text-slate-100 transition-colors"
+            title={isMinimized ? '복원' : '최소화'}
+          >
+            {isMinimized ? '⬆️' : '⬇️'}
+          </button>
         </header>
+
+        {!isMinimized && (
+          <>
 
         <div className="flex gap-1 border-b border-slate-800/80 bg-slate-950/60 px-2 py-1">
           <button
@@ -180,6 +192,8 @@ const AnonymousBoard: React.FC = () => {
             </div>
           )}
         </div>
+        </>
+        )}
       </div>
     </div>
   );
