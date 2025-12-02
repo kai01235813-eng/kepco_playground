@@ -29,8 +29,40 @@ const KnowledgeHubPage: React.FC = () => {
     file: null as File | null
   });
 
-  // 로그인한 사용자 정보
-  const user = JSON.parse(localStorage.getItem('user') || 'null');
+  // 로그인한 사용자 정보 (항상 최신 상태 가져오기)
+  const getUser = () => {
+    try {
+      const userStr = localStorage.getItem('user');
+      return userStr ? JSON.parse(userStr) : null;
+    } catch {
+      return null;
+    }
+  };
+  
+  const [user, setUser] = useState(getUser());
+
+  // 사용자 정보 업데이트를 위한 이벤트 리스너
+  useEffect(() => {
+    const handleStorageChange = () => {
+      setUser(getUser());
+    };
+    
+    // localStorage 변경 감지 (같은 탭 내)
+    window.addEventListener('storage', handleStorageChange);
+    
+    // 커스텀 이벤트로 같은 탭 내 변경 감지
+    const interval = setInterval(() => {
+      const currentUser = getUser();
+      if (JSON.stringify(currentUser) !== JSON.stringify(user)) {
+        setUser(currentUser);
+      }
+    }, 1000);
+    
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      clearInterval(interval);
+    };
+  }, [user]);
 
   useEffect(() => {
     void loadPosts();
@@ -302,7 +334,7 @@ const KnowledgeHubPage: React.FC = () => {
 
       {/* 카테고리 필터 */}
       <section className="glass-panel p-4">
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={() => setSelectedCategory('all')}
@@ -347,19 +379,21 @@ const KnowledgeHubPage: React.FC = () => {
           >
             템플릿
           </button>
-          {user && (
-            <button
-              type="button"
-              onClick={() => {
-                setShowForm(true);
-                setEditingPost(null);
-                setFormData({ category: selectedCategory !== 'all' ? selectedCategory : 'guide', title: '', content: '', file: null });
-              }}
-              className="ml-auto px-4 py-1 rounded-lg text-xs bg-kepco-sky/20 text-kepco-sky hover:bg-kepco-sky/30 transition-colors"
-            >
-              + 새 글 작성
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => {
+              if (!user || !user.employeeId) {
+                alert('로그인이 필요합니다. 먼저 로그인해주세요.');
+                return;
+              }
+              setShowForm(true);
+              setEditingPost(null);
+              setFormData({ category: selectedCategory !== 'all' ? selectedCategory : 'guide', title: '', content: '', file: null });
+            }}
+            className="ml-auto px-4 py-2 rounded-lg text-xs font-medium bg-kepco-sky/30 text-kepco-sky hover:bg-kepco-sky/40 transition-colors border border-kepco-sky/40"
+          >
+            + 새 글 작성
+          </button>
         </div>
       </section>
 
