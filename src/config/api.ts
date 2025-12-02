@@ -14,10 +14,19 @@ console.log('🔗 Full login URL:', `${API_BASE}/auth/login`);
 // eslint-disable-next-line no-console
 console.log('🔗 Full signup URL:', `${API_BASE}/auth/signup`);
 
-// 환경 변수가 설정되지 않은 경우 경고
-if (!import.meta.env.VITE_API_BASE && import.meta.env.PROD) {
-  // eslint-disable-next-line no-console
-  console.warn('⚠️ VITE_API_BASE 환경 변수가 설정되지 않았습니다! Vercel Dashboard에서 설정하세요.');
+// 환경 변수가 설정되지 않은 경우 경고 (프로덕션 환경)
+if (!import.meta.env.VITE_API_BASE) {
+  if (import.meta.env.PROD) {
+    // eslint-disable-next-line no-console
+    console.error('❌ VITE_API_BASE 환경 변수가 설정되지 않았습니다!');
+    // eslint-disable-next-line no-console
+    console.error('Vercel Dashboard → Settings → Environment Variables에서 설정하세요.');
+    // eslint-disable-next-line no-console
+    console.error('설정 후 반드시 재배포해야 합니다!');
+  } else {
+    // eslint-disable-next-line no-console
+    console.warn('⚠️ 개발 환경: 로컬 서버를 사용합니다.');
+  }
 }
 
 
